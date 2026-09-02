@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Route Fuel">
+<meta name="theme-color" content="#0a0e14">
+<title>EC225 Route Fuel Planner</title>
+<style>
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #0a0e14;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    color: #e6edf3;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    max-width: 560px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #818cf8;
+    border-radius: 16px;
+    touch-action: manipulation;
+  }
+  header { text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #1f2937; }
+  /* Back to the tool list. A home-screen PWA has no browser chrome and no
+     swipe-back gesture, so without this there is genuinely no way out of a
+     tool -- pilots were getting stranded. Sits left of the title, sized to
+     a comfortable thumb target. (Added 2026-09-01.) */
+  .back-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: #818cf8; text-decoration: none;
+    font-size: 13px; font-weight: 500;
+    padding: 6px 12px 6px 8px; margin-left: -8px;
+    border: 1px solid #1f2937; border-radius: 8px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .back-link:active { background: #1f2937; }
+  .back-link svg { width: 14px; height: 14px; }
+  /* Its own row, left-aligned above the centred title. Deliberately NOT
+     absolutely positioned over the header: most tool titles are long
+     enough to wrap to two lines on a phone, and an overlaid link would
+     collide with them. A separate row cannot overlap at any width. */
+  .back-row { text-align: left; margin-bottom: 10px; }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: 0.3px; }
+  .subtitle { font-size: 11px; color: #7d8590; margin-top: 6px; letter-spacing: 1px; text-transform: uppercase; }
+
+  .section {
+    background: linear-gradient(180deg, #0d1117 0%, #10151d 100%);
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .section-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: #e6edf3; }
+  .fpl-btn {
+    width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #58a6ff;
+    background: rgba(88,166,255,0.12); color: #cfe3ff; font-size: 15px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent; cursor: pointer;
+  }
+  .fpl-btn:active { background: rgba(88,166,255,0.25); }
+  .fpl-summary { margin-top: 12px; font-size: 13px; color: #9ca3af; line-height: 1.5; display: none; }
+  .fpl-summary.show { display: block; }
+  .fpl-summary strong { color: #e6edf3; }
+  .fpl-route { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: #7d8590;
+    margin-top: 8px; word-break: break-word; }
+  .fpl-applied { color: #4ade80; }
+  .fpl-manual { color: #fbbf24; }
+  .fpl-err { color: #ef4444; margin-top: 10px; font-size: 13px; display: none; }
+  .fpl-err.show { display: block; }
+  .fpl-map { margin-top: 14px; display: none; }
+  .fpl-map.show { display: block; }
+  .fpl-map svg { width: 100%; height: auto; display: block;
+    background: #0a0e14; border: 1px solid #1f2937; border-radius: 10px; }
+  .fpl-map-note { font-size: 11px; color: #6b7280; margin-top: 6px; text-align: center; }
+  .section-sub { font-size: 11px; color: #7d8590; margin-bottom: 14px; }
+  .subsection-divider { border-top: 1px solid #1f2937; margin: 16px 0 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display:block; font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper input[type=number] {
+    flex: 1; background: #0a0e14; border: 1px solid #374151; border-radius: 8px;
+    color: #e6edf3; font-size: 16px; padding: 10px 6px; text-align: center;
+    -moz-appearance: textfield; min-width: 0;
+  }
+
+  /* Short numeric fields (Hp, OAT, wind, elevation, ROC, etc.) don't need to
+     stretch the full width of the app for a 4-5 digit number -- group them
+     in a row and give the stepper itself a fixed max-width so the buttons
+     sit close to the input instead of spread across the whole card. Falls
+     back to full-width stacking automatically on very narrow screens via
+     flex-wrap, so nothing breaks on a small iPhone. */
+  .field-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .field-row .field { flex: 1 1 140px; min-width: 130px; margin-bottom: 14px; }
+  .field-row .field .stepper { max-width: 220px; }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin:0; }
+  .stepper input.emphasis { font-size: 19px; font-weight: 600; }
+  .stepper input.de-emphasis { font-size: 13px; color: #9ca3af; }
+  .weight-unit.emphasis-unit .weight-unit-label { font-size: 11px; color: #9ca3af; }
+  .weight-unit.de-emphasis-unit .weight-unit-label { font-size: 9px; color: #6b7280; }
+  .stepper button {
+    width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; border: 1px solid #374151;
+    background: #161b22; color: #e6edf3; font-size: 18px; -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .stepper button:active { background: #1f2937; }
+
+  .weight-pair { display: flex; gap: 10px; }
+  .weight-unit { flex: 1; min-width: 0; }
+  .weight-unit-label { font-size: 10px; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.6px; }
+
+  .equip-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 14px; }
+  .equip-row input[type=checkbox] { width: 20px; height: 20px; accent-color: #818cf8; }
+
+  .toggle-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .toggle-btn {
+    flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #374151;
+    background: #161b22; color: #9ca3af; font-size: 13px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .toggle-btn.active { background: rgba(129,140,248,0.15); border-color: #818cf8; color: #c7d2fe; }
+
+  select {
+    width: 100%; background: #0a0e14; border: 1px solid #374151; border-radius: 8px;
+    color: #e6edf3; font-size: 15px; padding: 10px 8px;
+  }
+
+  .field input[type=text] {
+    width: 100%; background: #0a0e14; border: 1px solid #374151; border-radius: 8px;
+    color: #e6edf3; font-size: 16px; padding: 10px 8px; text-align: center;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+
+  .btn-calc {
+    width: 100%; padding: 13px; border-radius: 10px; border: none;
+    background: #818cf8; color: #0a0e14; font-size: 15px; font-weight: 600;
+    margin-top: 4px; -webkit-tap-highlight-color: transparent;
+  }
+  .btn-calc:active { background: #6366f1; }
+
+  .banner {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
+  }
+  .banner.ok { background: rgba(74,222,128,0.1); border-left: 3px solid #4ade80; color: #4ade80; }
+  .banner.warn { background: rgba(251,191,36,0.1); border-left: 3px solid #fbbf24; color: #fbbf24; }
+  .banner.err { background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444; color: #ef4444; }
+
+  .summary-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;
+  }
+  .summary-cell {
+    background: #0a0e14; border: 1px solid #1f2937; border-radius: 8px; padding: 10px 12px;
+  }
+  .summary-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .summary-value { font-size: 17px; font-weight: 600; color: #e6edf3; }
+  .summary-value.warn { color: #fbbf24; }
+  .summary-value.err { color: #ef4444; }
+  .summary-unit { font-size: 11px; color: #7d8590; margin-left: 3px; font-weight: 400; }
+  .wt-lb-big { font-size: 17px; font-weight: 600; color: #e6edf3; }
+  .wt-kg-small { font-size: 11px; color: #7d8590; font-weight: 400; }
+
+  table.burn-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 10px; }
+  table.burn-table th, table.burn-table td {
+    padding: 6px 4px; text-align: right; border-bottom: 1px solid #1f2937; white-space: nowrap;
+  }
+  table.burn-table th { color: #7d8590; font-weight: 600; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.3px; }
+  table.burn-table td { color: #e6edf3; }
+  table.burn-table td:first-child, table.burn-table th:first-child { text-align: left; }
+  table.burn-table tr.milestone td { color: #c7d2fe; font-weight: 600; background: rgba(129,140,248,0.08); }
+  .time-note { font-size: 9.5px; font-weight: 600; color: #a5b4fc; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+  .row-asterisk { color: #fbbf24; font-weight: 700; margin-left: 2px; }
+  .burn-footnote { font-size: 10.5px; color: #7d8590; margin-top: 8px; line-height: 1.5; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .info {
+    margin-top: 4px; margin-bottom: 16px;
+    padding: 12px 14px;
+    background: rgba(88, 166, 255, 0.06);
+    border-left: 3px solid #58a6ff;
+    font-size: 11px;
+    color: #9ca3af;
+    border-radius: 4px;
+    line-height: 1.5;
+  }
+  .info strong { color: #e6edf3; }
+
+  .footer {
+    margin-top: auto;
+    padding-top: 20px;
+    font-size: 10px;
+    color: #6b7280;
+    text-align: center;
+    line-height: 1.6;
+    letter-spacing: 0.3px;
+  }
+  .refresh-link {
+    display: inline-block; margin-top: 10px;
+    color: #818cf8; text-decoration: none;
+    font-size: 10px; letter-spacing: 0.3px;
+    border: 1px solid #1f2937; border-radius: 6px;
+    padding: 6px 12px;
+  }
+  .refresh-link:active { background: #1f2937; }
+
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="back-row"><a href="../" class="back-link" aria-label="Back to tool list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><span class="back-word">Tools</span></a></div>
+    <h1>EC225 Route Fuel Planner</h1>
+    <div class="subtitle">MAKILA 2A1 &middot; MPAI Bullets Closed &middot; ForeFlight Import &middot; <span style="color:#fbbf24;">BETA</span></div>
+  </header>
+
+  <div class="section">
+    <div class="section-title">Flight Plan Import</div>
+    <div class="section-sub">Load a ForeFlight <code>.fpl</code> route to fill Total Route Distance, Cruise Pressure Altitude, and the departure identifier. OAT, wind, and field elevation are <strong>not</strong> in the file &mdash; enter those yourself. Nothing is uploaded; the file is read on this device.</div>
+    <input type="file" id="fpl-file" accept=".fpl,.xml,text/xml" style="display:none" onchange="handleFplFile(this)">
+    <button class="fpl-btn" onclick="document.getElementById('fpl-file').click()">Load ForeFlight Plan (.fpl)</button>
+    <div class="fpl-err" id="fpl-err"></div>
+    <div class="fpl-summary" id="fpl-summary"></div>
+    <div class="fpl-map" id="fpl-map"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Category &amp; Reserve</div>
+    <div class="toggle-row">
+      <button class="toggle-btn" id="catA-btn" onclick="setCategory('A')">CAT A</button>
+      <button class="toggle-btn active" id="catB-btn" onclick="setCategory('B')">CAT B</button>
+    </div>
+    <div class="toggle-row">
+      <button class="toggle-btn" id="ifr-btn" onclick="setRules('IFR')">IFR &middot; 30 min reserve</button>
+      <button class="toggle-btn active" id="vfr-btn" onclick="setRules('VFR')">VFR &middot; 20 min reserve</button>
+    </div>
+
+    <div class="field">
+      <label>CAT A/B Max Allowable GWT (from chart)</label>
+      <div class="weight-pair">
+        <div class="weight-unit emphasis-unit">
+          <div class="weight-unit-label">lb</div>
+          <div class="stepper">
+            <button onclick="stepWeightLb('maxgwt',-200)">&minus;</button>
+            <input type="number" class="emphasis" id="maxgwt-lb" value="24251" step="200" oninput="syncWeightFromLb('maxgwt')">
+            <button onclick="stepWeightLb('maxgwt',200)">+</button>
+          </div>
+        </div>
+        <div class="weight-unit de-emphasis-unit">
+          <div class="weight-unit-label">kg</div>
+          <div class="stepper">
+            <button onclick="stepWeightKg('maxgwt',-100)">&minus;</button>
+            <input type="number" class="de-emphasis" id="maxgwt-kg" value="11000" step="100" oninput="syncWeightFromKg('maxgwt')">
+            <button onclick="stepWeightKg('maxgwt',100)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-sub" id="maxgwt-note"></div>
+
+    <div class="subsection-divider"></div>
+
+    <div class="section-title" style="margin-top:14px;">Optional Equipment</div>
+    <div class="section-sub">Applies -3% each to TAS at each 15-minute step (only where TAS &ge; V<sub>y</sub>), per RFM Section 10.0. Torque and fuel flow are unaffected (no correction given for those in the book).</div>
+    <div class="equip-row"><input type="checkbox" id="eqHoist" checked><label for="eqHoist">Single/dual hoist installed</label></div>
+    <div class="equip-row"><input type="checkbox" id="eqTanks" checked><label for="eqTanks">Forward external fuel tanks / luggage cases installed</label></div>
+
+    <div class="subsection-divider"></div>
+
+    <div class="section-title" style="margin-top:14px;">Cruise Power Margin (FLI = 0.5 Below MCP)</div>
+    <div class="section-sub">Unchecked, cruise may plan right up to AEO Max Continuous. Checked: plan cruise 7% torque below AEO Max Continuous, IAW Flight Crew Operating Manual (FCOM). Costs a few knots where power is already near the limit &mdash; heavy, hot, or high.</div>
+    <div class="equip-row"><input type="checkbox" id="fcop-margin" checked onchange="runPlanner()"><label for="fcop-margin">Hold 7% below AEO Max Continuous (FCOM)</label></div>
+    <div class="section-sub" style="margin-top:6px; margin-bottom:0;">Applies to the cruise steps only &mdash; the climb segment always targets 1% below AEO Max Continuous.</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Departure Airfield</div>
+    <div class="section-sub">Used to size a single climb segment from field elevation up to cruise altitude &mdash; a simplified average-climb estimate, not a modeled climb profile. Inserted as the first row of the burn-down below, ahead of the 15-minute cruise steps.</div>
+    <div class="field" style="max-width:180px;">
+      <label>Identifier</label>
+      <input type="text" id="dep-id" maxlength="4" placeholder="e.g. KABC" value="">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Elevation (ft)</label>
+        <div class="stepper">
+          <button onclick="step('dep-elev',-100)">&minus;</button>
+          <input type="number" id="dep-elev" value="0" step="100">
+          <button onclick="step('dep-elev',100)">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>OAT (&deg;C)</label>
+        <div class="stepper">
+          <button onclick="step('dep-oat',-5)">&minus;</button>
+          <input type="number" id="dep-oat" value="25" step="5">
+          <button onclick="step('dep-oat',5)">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Rate of Climb (ft/min)</label>
+        <div class="stepper">
+          <button onclick="stepRoc(-100)">&minus;</button>
+          <input type="number" id="roc" value="500" step="100" min="500" max="1500" oninput="clampRoc()">
+          <button onclick="stepRoc(100)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="section-sub" style="margin-top:10px; margin-bottom:0;">TAS reduction during climb scales linearly with ROC: 10% off best-range TAS at 500 ft/min, up to 30% off at 1,500 ft/min. Fuel flow for the climb segment is looked up at the midpoint altitude/OAT between field elevation and cruise altitude, at departure weight.</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Cruise Conditions</div>
+    <div class="section-sub">Same Section 10.2.A1 data as the Cruise Torque &amp; Fuel Burn tool &mdash; used here to re-look-up TAS and fuel flow every 15 minutes as weight burns down.</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Pressure Altitude (ft)</label>
+        <div class="stepper">
+          <button onclick="step('hp',-500)">&minus;</button>
+          <input type="number" id="hp" value="1500" step="500">
+          <button onclick="step('hp',500)">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>OAT (&deg;C)</label>
+        <div class="stepper">
+          <button onclick="step('oat',-5)">&minus;</button>
+          <input type="number" id="oat" value="20" step="5">
+          <button onclick="step('oat',5)">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Total Route Distance (NM)</label>
+        <div class="stepper">
+          <button onclick="step('dist',-25)">&minus;</button>
+          <input type="number" id="dist" value="150" step="25">
+          <button onclick="step('dist',25)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="field" style="max-width:220px;">
+      <label>Flight Level Wind (kt) &middot; &minus; headwind / + tailwind</label>
+      <div class="stepper">
+        <button onclick="step('wind',-5)">&minus;</button>
+        <input type="number" id="wind" value="0" step="5">
+        <button onclick="step('wind',5)">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Weight &amp; Fuel</div>
+    <div class="section-sub">Zero Fuel Weight is the aircraft empty weight plus crew and payload &mdash; everything except fuel. Fuel on board is added to it below to get total takeoff weight.</div>
+
+    <div class="field">
+      <label>Zero Fuel Weight</label>
+      <div class="weight-pair">
+        <div class="weight-unit emphasis-unit">
+          <div class="weight-unit-label">lb</div>
+          <div class="stepper">
+            <button onclick="stepWeightLb('zfw',-200); updateTotalWeight();">&minus;</button>
+            <input type="number" class="emphasis" id="zfw-lb" value="15250" step="200" oninput="syncWeightFromLb('zfw'); updateTotalWeight();">
+            <button onclick="stepWeightLb('zfw',200); updateTotalWeight();">+</button>
+          </div>
+        </div>
+        <div class="weight-unit de-emphasis-unit">
+          <div class="weight-unit-label">kg</div>
+          <div class="stepper">
+            <button onclick="stepWeightKg('zfw',-100); updateTotalWeight();">&minus;</button>
+            <input type="number" class="de-emphasis" id="zfw-kg" value="6917" step="100" oninput="syncWeightFromKg('zfw'); updateTotalWeight();">
+            <button onclick="stepWeightKg('zfw',100); updateTotalWeight();">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Fuel on Board at Takeoff</label>
+      <div class="weight-pair">
+        <div class="weight-unit emphasis-unit">
+          <div class="weight-unit-label">lb</div>
+          <div class="stepper">
+            <button onclick="stepFuelLb('fuel',-100); updateTotalWeight();">&minus;</button>
+            <input type="number" class="emphasis" id="fuel-lb" value="4500" step="100" oninput="syncFuelFromLb('fuel'); updateTotalWeight();">
+            <button onclick="stepFuelLb('fuel',100); updateTotalWeight();">+</button>
+          </div>
+        </div>
+        <div class="weight-unit de-emphasis-unit">
+          <div class="weight-unit-label">kg</div>
+          <div class="stepper">
+            <button onclick="stepFuelKg('fuel',-50); updateTotalWeight();">&minus;</button>
+            <input type="number" class="de-emphasis" id="fuel-kg" value="2041" step="50" oninput="syncFuelFromKg('fuel'); updateTotalWeight();">
+            <button onclick="stepFuelKg('fuel',50); updateTotalWeight();">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Total Takeoff Weight <span style="text-transform:none;letter-spacing:0;color:#6b7280;">(Zero Fuel Weight + Fuel)</span></label>
+      <div class="summary-cell" style="text-align:center; padding: 12px;">
+        <div id="total-wt-display" style="font-size:19px; font-weight:600; color:#e6edf3;">&mdash;</div>
+      </div>
+    </div>
+
+  </div>
+
+  <button class="btn-calc" onclick="runPlanner()">Run Mission Plan</button>
+
+  <div id="results" style="display:none;">
+    <div class="section">
+      <div class="section-title">Result</div>
+      <div id="result-banner"></div>
+      <div class="summary-grid">
+        <div class="summary-cell">
+          <div class="summary-label">Time to Destination / Reserve</div>
+          <div class="summary-value" id="sum-time">&mdash;</div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">Distance Covered</div>
+          <div class="summary-value" id="sum-dist">&mdash;<span class="summary-unit">NM</span></div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">Fuel Remaining</div>
+          <div class="summary-value" id="sum-fuel">&mdash;</div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">Landing Weight</div>
+          <div class="summary-value" id="sum-weight">&mdash;</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="burn-title">15-Minute Burn-Down</div>
+      <div class="section-sub" id="burn-sub">TAS and fuel flow re-computed at the actual weight for each interval &mdash; not a fixed hourly estimate.</div>
+      <div class="table-scroll">
+        <table class="burn-table" id="burn-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>TAS</th><th>GS</th><th>Weight (lb)</th><th>Fuel (lb)</th><th>Burn (lb/h)</th><th>Dist Rem (NM)</th>
+            </tr>
+          </thead>
+          <tbody id="burn-tbody"></tbody>
+        </table>
+      </div>
+      <div class="burn-footnote" id="burn-footnote" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="info">
+    <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-07-27, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. CAT A/B Max Allowable GWT must still be read from the CAT A/B charts (ec225-ca-cat-a / ec225-cb-to-lnd) &mdash; this tool checks your takeoff weight against it but does not compute it. Simulation stops immediately if any 15-minute point falls outside the charted envelope, rather than guessing.
+  </div>
+
+  <div class="footer">
+    PILOT AID &middot; NOT A SUBSTITUTE FOR THE AFM<br>
+    Verify against source charts for operational use<br>
+    <a href="javascript:void(0)" class="refresh-link" onclick="forceRefresh()">&#8635; Refresh App</a>
+  </div>
+</div>
+
+<script>
+const FIGURES = {"01":{"hp":0,"oat":-30,"tableA":{"7000":{"-50":141.7,"-40":139.4,"-30":137.7,"-20":135.5,"-10":132.4,"0":128.5,"10":125.6,"20":122.9,"30":120.6,"40":118.9,"50":117.2},"7500":{"-50":142.2,"-40":140.6,"-30":138.9,"-20":136.7,"-10":133.9,"0":130.8,"10":128.2,"20":125.6,"30":123.1,"40":121.1,"50":119.2},"8000":{"-50":142.4,"-40":141.4,"-30":139.7,"-20":137.7,"-10":135.3,"0":132.7,"10":130.3,"20":127.8,"30":125.4,"40":123.2,"50":121.2},"8500":{"-50":142.4,"-40":141.8,"-30":140.2,"-20":138.4,"-10":136.3,"0":134.2,"10":132,"20":129.7,"30":127.3,"40":125.1,"50":123},"9000":{"-50":141.9,"-40":141.9,"-30":140.4,"-20":138.8,"-10":137,"0":135.3,"10":133.3,"20":131,"30":128.9,"40":126.6,"50":124.5},"9500":{"-50":141,"-40":141,"-30":140.3,"-20":139,"-10":137.4,"0":135.9,"10":134.1,"20":132.1,"30":130.1,"40":128,"50":126},"10000":{"-50":141,"-40":140,"-30":139.9,"-20":139,"-10":137.5,"0":136.3,"10":134.6,"20":132.7,"30":131,"40":129.1,"50":127.2},"10500":{"-50":139,"-40":139,"-30":139,"-20":138.7,"-10":137.3,"0":136.2,"10":134.7,"20":133,"30":131.7,"40":130,"50":128.2},"11000":{"-50":137,"-40":137,"-30":137,"-20":137,"-10":136.9,"0":135.8,"10":134.5,"20":133,"30":132.1,"40":130.7,"50":129.1}},"tableB":{"7000":{"100":[39.2,482],"110":[45,509],"120":[53,548],"130":[64,602],"140":[78,670],"145":[87,720]},"7500":{"100":[41,489],"110":[47,515],"120":[54,552],"130":[65,606],"140":[79,675],"145":[87.2,722]},"8000":{"100":[42.4,496],"110":[48,522],"120":[55,556],"130":[66,608],"140":[80,680],"145":[87.4,724]},"8500":{"100":[44,505],"110":[49,530],"120":[56,565],"130":[66,610],"140":[81,685],"145":[87.6,726]},"9000":{"100":[46,514],"110":[51,537],"120":[58,570],"130":[67,617],"140":[82,690],"145":[87.8,729]},"9500":{"100":[48,524],"110":[53,546],"120":[59,578],"130":[69,624],"140":[83,695],"145":[89,732]},"10000":{"100":[50,535],"110":[55,555],"120":[61,588],"130":[70,630],"140":[83.5,700]},"10500":{"100":[52,544],"110":[57,566],"120":[63,593],"130":[72,640],"140":[84,705]},"11000":{"100":[55,555],"110":[59,576],"120":[65,605],"130":[74,649],"140":[87,720]}},"aeoMaxCont":82.7},"02":{"hp":0,"oat":-15,"tableA":{"7000":{"-50":145.6,"-40":143.8,"-30":141,"-20":138,"-10":134.8,"0":131.4,"10":128.2,"20":125.7,"30":123.6,"40":122,"50":120.4},"7500":{"-50":145.7,"-40":144.6,"-30":142.4,"-20":139.7,"-10":136.7,"0":133.7,"10":130.8,"20":128.3,"30":126,"40":124.1,"50":122.1},"8000":{"-50":145.6,"-40":145,"-30":143.4,"-20":141,"-10":138.1,"0":135.7,"10":132.9,"20":130.5,"30":128.1,"40":126,"50":123.8},"8500":{"-50":145.1,"-40":145.1,"-30":143.9,"-20":141.9,"-10":139.3,"0":137.2,"10":134.6,"20":132.3,"30":129.8,"40":127.7,"50":125.4},"9000":{"-50":144,"-40":144.6,"-30":143.9,"-20":142.3,"-10":140.1,"0":138.2,"10":135.8,"20":133.6,"30":131.2,"40":129.1,"50":126.9},"9500":{"-50":143.7,"-40":143.7,"-30":143.7,"-20":142.3,"-10":140.6,"0":138.9,"10":136.6,"20":134.6,"30":132.3,"40":130.3,"50":128.2},"10000":{"-50":142.6,"-40":142.6,"-30":142.6,"-20":142,"-10":140.7,"0":139.2,"10":137.1,"20":135.2,"30":133.1,"40":131.2,"50":129.4},"10500":{"-50":140,"-40":140,"-30":140,"-20":140,"-10":140.5,"0":139.1,"10":137.1,"20":135.5,"30":133.6,"40":132,"50":130.6},"11000":{"-50":139,"-40":139,"-30":139,"-20":139,"-10":139,"0":138.6,"10":136.9,"20":135.4,"30":133.8,"40":132.5,"50":131.5}},"tableB":{"7000":{"100":[38,482],"110":[44,507],"120":[51,542],"130":[61,590],"140":[73,651],"145":[81,689],"150":[91,748]},"7500":{"100":[40,490],"110":[45,515],"120":[52,549],"130":[62,593],"140":[74,652],"145":[81,692],"150":[91,748]},"8000":{"100":[42,498],"110":[47,524],"120":[53,553],"130":[62,598],"140":[75,659],"145":[82,698],"150":[91,748]},"8500":{"100":[44,508],"110":[48,530],"120":[55,562],"130":[64,606],"140":[76,666],"145":[83,705],"150":[92,760]},"9000":{"100":[46,518],"110":[50,539],"120":[57,569],"130":[65,610],"140":[77,669],"145":[83,707]},"9500":{"100":[48,528],"110":[52,548],"120":[58,579],"130":[67,619],"140":[78,677],"145":[85,712]},"10000":{"100":[50,538],"110":[54,558],"120":[59,584],"130":[68,627],"140":[79,682],"145":[86,720]},"10500":{"100":[52,549],"110":[56,567],"120":[62,595],"130":[70,633],"140":[81,692],"145":[89,738]},"11000":{"100":[55,560],"110":[58,580],"120":[64,608],"130":[72,647],"140":[83,703],"145":[91,748]}},"aeoMaxCont":82.7},"03":{"hp":0,"oat":0,"tableA":{"7000":{"-50":148.5,"-40":147.6,"-30":143.9,"-20":139.8,"-10":136.7,"0":133.9,"10":131,"20":129.1,"30":126.5,"40":125,"50":123.5},"7500":{"-50":148.5,"-40":147.9,"-30":145.4,"-20":141.9,"-10":138.8,"0":135.9,"10":133.2,"20":131.1,"30":128.7,"40":126.8,"50":125.1},"8000":{"-50":148.1,"-40":148.1,"-30":146.4,"-20":143.5,"-10":140.6,"0":137.7,"10":135.1,"20":132.8,"30":130.5,"40":128.5,"50":126.7},"8500":{"-50":148,"-40":147.6,"-30":146.8,"-20":144.5,"-10":141.9,"0":139.1,"10":136.6,"20":134.3,"30":132.1,"40":130,"50":128.1},"9000":{"-50":146.8,"-40":146.8,"-30":146.8,"-20":145,"-10":142.7,"0":140.1,"10":137.8,"20":135.4,"30":133.4,"40":131.2,"50":129.3},"9500":{"-50":145.8,"-40":145.8,"-30":145.8,"-20":144.9,"-10":143.1,"0":140.9,"10":138.7,"20":136.3,"30":134.3,"40":132.1,"50":130.4},"10000":{"-50":144.4,"-40":144.4,"-30":144.4,"-20":144.4,"-10":143.1,"0":141.4,"10":139.2,"20":136.9,"30":134.9,"40":132.9,"50":131.2},"10500":{"-50":142.7,"-40":142.7,"-30":142.7,"-20":142.7,"-10":142.7,"0":141.6,"10":139.4,"20":137.2,"30":135.3,"40":133.5,"50":132},"11000":{"-50":141,"-40":141,"-30":141,"-20":141,"-10":142,"0":141,"10":139.4,"20":137.2,"30":135.3,"40":133.8,"50":132.6}},"tableB":{"7000":{"100":[37,482],"110":[42,507],"120":[49,540],"130":[58,582],"140":[70,642],"145":[76,678],"150":[86,728]},"7500":{"100":[39,491],"110":[44,516],"120":[50,545],"130":[59,589],"140":[71,648],"145":[77,680],"150":[86,730]},"8000":{"100":[41,502],"110":[45,521],"120":[51,551],"130":[60,596],"140":[71,651],"145":[78,683],"150":[87,736]},"8500":{"100":[43,512],"110":[47,532],"120":[53,560],"130":[61,602],"140":[72,654],"145":[80,691],"150":[89,744]},"9000":{"100":[45,521],"110":[49,541],"120":[55,570],"130":[63,609],"140":[74,662],"145":[81,697],"150":[91,755]},"9500":{"100":[47,533],"110":[51,550],"120":[57,579],"130":[65,618],"140":[75,670],"145":[82,702],"150":[92,761]},"10000":{"100":[50,543],"110":[53,562],"120":[59,589],"130":[66,627],"140":[77,680],"145":[84,711]},"10500":{"100":[52,553],"110":[55,572],"120":[61,598],"130":[69,638],"140":[80,692],"145":[87,732]},"11000":{"100":[54,563],"110":[58,582],"120":[63,610],"130":[71,648],"140":[82,702],"145":[89,745]}},"aeoMaxCont":82.7},"04":{"hp":0,"oat":15,"tableA":{"7000":{"-50":151.1,"-40":150,"-30":145.5,"-20":141.4,"-10":139.1,"0":137.1,"10":134.3,"20":131.7,"30":129.3,"40":127.5,"50":125.8},"7500":{"-50":151,"-40":150.2,"-30":147.2,"-20":143.6,"-10":140.9,"0":138.6,"10":135.9,"20":133.6,"30":131.4,"40":129.4,"50":127.6},"8000":{"-50":150.5,"-40":150.2,"-30":148.3,"-20":145.2,"-10":142.4,"0":139.8,"10":137.2,"20":135.2,"30":133.1,"40":131.1,"50":129.2},"8500":{"-50":150,"-40":149.8,"-30":148.8,"-20":146.3,"-10":143.5,"0":140.8,"10":138.3,"20":136.4,"30":134.4,"40":132.4,"50":130.5},"9000":{"-50":148.8,"-40":148.8,"-30":148.8,"-20":146.7,"-10":144.2,"0":141.6,"10":139.1,"20":137.3,"30":135.3,"40":133.3,"50":131.6},"9500":{"-50":147.6,"-40":147.6,"-30":147.6,"-20":146.5,"-10":144.4,"0":142.1,"10":139.8,"20":137.9,"30":135.8,"40":134.1,"50":132.3},"10000":{"-50":145.9,"-40":145.9,"-30":145.9,"-20":145.9,"-10":144.3,"0":142.4,"10":140.1,"20":138,"30":136,"40":134.5,"50":132.8},"10500":{"-50":143.9,"-40":143.9,"-30":143.9,"-20":143.9,"-10":143.9,"0":142.5,"10":140.2,"20":138,"30":135.9,"40":134.5,"50":132.9},"11000":{"-50":141,"-40":142,"-30":142,"-20":142,"-10":143,"0":143,"10":140.2,"20":137.6,"30":135.5,"40":134.4,"50":132.9}},"tableB":{"7000":{"100":[36,482],"110":[41,507],"120":[47,539],"130":[55,580],"140":[66,633],"145":[73,665],"150":[81,704]},"7500":{"100":[37,493],"110":[43,517],"120":[48,541],"130":[57,585],"140":[67,639],"145":[74,670],"150":[82,712]},"8000":{"100":[40,502],"110":[45,523],"120":[50,552],"130":[58,593],"140":[69,645],"145":[75,676],"150":[83,719]},"8500":{"100":[43,517],"110":[46,537],"120":[52,561],"130":[59,601],"140":[70,652],"145":[76,682],"150":[84,722]},"9000":{"100":[45,526],"110":[48,542],"120":[54,571],"130":[61,609],"140":[71,660],"145":[78,690],"150":[85,728]},"9500":{"100":[47,538],"110":[50,555],"120":[56,582],"130":[63,618],"140":[74,670],"145":[79,699],"150":[87,737]},"10000":{"100":[49,549],"110":[53,565],"120":[58,592],"130":[65,628],"140":[76,681],"145":[82,712],"150":[90,755]},"10500":{"100":[52,561],"110":[55,579],"120":[60,602],"130":[68,640],"140":[78,693],"145":[84,721]},"11000":{"100":[54,574],"110":[58,592],"120":[63,617],"130":[70,656],"140":[81,707],"145":[88,743]}},"aeoMaxCont":82.7},"05":{"hp":0,"oat":30,"tableA":{"7000":{"-50":153.6,"-40":151.1,"-30":146.3,"-20":143.5,"-10":142.2,"0":139.9,"10":137,"20":133.9,"30":131,"40":128.9,"50":127.4},"7500":{"-50":153.3,"-40":151.7,"-30":148.1,"-20":145.4,"-10":143.3,"0":140.9,"10":138.3,"20":135.8,"30":133.2,"40":131.1,"50":129.3},"8000":{"-50":152.7,"-40":151.8,"-30":149.3,"-20":146.7,"-10":144.1,"0":141.7,"10":139.3,"20":137.3,"30":135,"40":133,"50":131},"8500":{"-50":151.6,"-40":151.6,"-30":149.8,"-20":147.5,"-10":144.7,"0":142.3,"10":140.1,"20":138.3,"30":136.3,"40":134.3,"50":132.3},"9000":{"-50":151,"-40":151,"-30":149.7,"-20":147.7,"-10":145,"0":142.7,"10":140.5,"20":138.9,"30":137,"40":135.2,"50":133.3},"9500":{"-50":149,"-40":149,"-30":149,"-20":147.3,"-10":145,"0":142.9,"10":140.8,"20":139.1,"30":137.4,"40":135.6,"50":133.9},"10000":{"-50":147,"-40":147,"-30":147,"-20":146.4,"-10":144.7,"0":142.9,"10":140.7,"20":138.8,"30":137.3,"40":135.6,"50":134.2},"10500":{"-50":145,"-40":145,"-30":145,"-20":144.8,"-10":144.2,"0":142.7,"10":140.3,"20":138,"30":136.7,"40":135.2,"50":134.2},"11000":{"-50":142,"-40":142,"-30":142,"-20":143,"-10":143,"0":142,"10":139.7,"20":137,"30":135.8,"40":134.3,"50":133.9}},"tableB":{"7000":{"100":[36,483],"110":[40,508],"120":[46,534],"130":[53,571],"140":[64,628],"145":[70,659],"150":[77,691],"155":[86,738]},"7500":{"100":[38,496],"110":[42,515],"120":[47,543],"130":[55,582],"140":[65,632],"145":[71,664],"150":[78,700],"155":[87,745]},"8000":{"100":[40,508],"110":[44,528],"120":[49,551],"130":[57,590],"140":[66,638],"145":[72,669],"150":[79,705],"155":[88,750]},"8500":{"100":[42,519],"110":[46,535],"120":[51,561],"130":[58,598],"140":[68,648],"145":[73,672],"150":[81,712]},"9000":{"100":[45,530],"110":[48,549],"120":[53,571],"130":[60,608],"140":[70,658],"145":[75,683],"150":[83,722]},"9500":{"100":[47,542],"110":[50,558],"120":[55,582],"130":[62,619],"140":[72,669],"145":[78,695],"150":[84,729]},"10000":{"100":[49,552],"110":[52,569],"120":[57,592],"130":[64,630],"140":[74,680],"145":[80,710],"150":[88,750]},"10500":{"100":[52,568],"110":[55,582],"120":[60,608],"130":[67,642],"140":[77,692],"145":[83,722],"150":[91,768]},"11000":{"100":[55,580],"110":[58,594],"120":[63,620],"130":[70,658],"140":[80,709],"145":[87,744],"150":[94,787]}},"aeoMaxCont":82.7},"06":{"hp":0,"oat":45,"tableA":{"7000":{"-50":151,"-40":151,"-30":149,"-20":146.2,"-10":143.5,"0":140.2,"10":137.4,"20":134.6,"30":132,"40":130,"50":128.3},"7500":{"-50":151,"-40":151,"-30":149.2,"-20":147.1,"-10":144.8,"0":142,"10":139.4,"20":136.7,"30":134.2,"40":132.1,"50":130.3},"8000":{"-50":150,"-40":150,"-30":149,"-20":147.6,"-10":145.7,"0":143.3,"10":140.8,"20":138.4,"30":135.9,"40":133.7,"50":131.9},"8500":{"-50":148.7,"-40":148.7,"-30":148.3,"-20":147.5,"-10":145.9,"0":143.9,"10":141.6,"20":139.5,"30":137.1,"40":135,"50":133.2},"9000":{"-50":147,"-40":147,"-30":146,"-20":146.8,"-10":145.5,"0":143.9,"10":141.8,"20":140,"30":137.8,"40":135.8,"50":134},"9500":{"-50":145.2,"-40":145.2,"-30":145.2,"-20":145.2,"-10":144.4,"0":143.2,"10":141.5,"20":139.9,"30":138,"40":136.2,"50":134.6},"10000":{"-50":142.8,"-40":142.8,"-30":142.8,"-20":142.8,"-10":142.8,"0":141.7,"10":140.5,"20":139.4,"30":137.9,"40":136.2,"50":134.7},"10500":{"-50":139.6,"-40":139.6,"-30":139.6,"-20":139.6,"-10":139.6,"0":139.6,"10":138.9,"20":138.2,"30":137.2,"40":135.8,"50":134.5},"11000":{"-50":136,"-40":136,"-30":136,"-20":136,"-10":136,"0":136,"10":136,"20":136,"30":136,"40":135,"50":134}},"tableB":{"7000":{"100":[36,482],"110":[39,508],"120":[44,531],"130":[52,571],"140":[61,622],"145":[67,649],"150":[74,685]},"7500":{"100":[38,496],"110":[41,512],"120":[46,542],"130":[53,580],"140":[63,628],"145":[68,655],"150":[75,690]},"8000":{"100":[40,509],"110":[43,527],"120":[48,551],"130":[55,589],"140":[64,635],"145":[70,665],"150":[76,696]},"8500":{"100":[42,522],"110":[45,539],"120":[50,562],"130":[57,600],"140":[66,645],"145":[71,672],"150":[78,710]},"9000":{"100":[44,532],"110":[47,549],"120":[52,572],"130":[59,609],"140":[68,653],"145":[74,685],"150":[80,718]},"9500":{"100":[47,548],"110":[50,561],"120":[54,582],"130":[61,620],"140":[71,670],"145":[76,700]},"10000":{"100":[49,558],"110":[52,572],"120":[57,599],"130":[64,632],"140":[73,682],"145":[77,710]},"10500":{"100":[52,571],"110":[55,589],"120":[60,612],"130":[67,649],"140":[77,703],"145":[83,733]},"11000":{"100":[55,588],"110":[58,605],"120":[63,629],"130":[70,666],"140":[81,725]}},"aeoMaxCont":76.2},"07":{"hp":3000,"oat":-30,"tableA":{"7000":{"-50":143.5,"-40":141,"-30":139.5,"-20":138.2,"-10":135.8,"0":133.3,"10":130.5,"20":128.2,"30":125.7,"40":122.7,"50":120.6},"7500":{"-50":144.9,"-40":142.3,"-30":140.2,"-20":138.5,"-10":136.6,"0":134.6,"10":132.3,"20":130.2,"30":127.8,"40":125.3,"50":123.1},"8000":{"-50":145.9,"-40":143.3,"-30":140.9,"-20":139,"-10":137.2,"0":135.6,"10":133.6,"20":131.8,"30":129.5,"40":127.3,"50":125.2},"8500":{"-50":146.3,"-40":144,"-30":141.4,"-20":139.2,"-10":137.7,"0":136.2,"10":134.5,"20":132.9,"30":130.7,"40":128.9,"50":126.9},"9000":{"-50":146.3,"-40":144.2,"-30":141.7,"-20":139.5,"-10":138,"0":136.5,"10":135,"20":133.5,"30":131.6,"40":130,"50":128.2},"9500":{"-50":145.6,"-40":144.1,"-30":142,"-20":139.7,"-10":138,"0":136.5,"10":135.1,"20":133.7,"30":132,"40":130.7,"50":129.1},"10000":{"-50":144.5,"-40":143.6,"-30":142.1,"-20":139.8,"-10":138,"0":136.1,"10":134.8,"20":133.5,"30":132.1,"40":130.8,"50":129.6},"10500":{"-50":143,"-40":143,"-30":142,"-20":139.8,"-10":137.7,"0":135.4,"10":134.1,"20":132.8,"30":131.8,"40":130.7,"50":129.7},"11000":{"-50":140,"-40":142,"-30":142,"-20":139.9,"-10":137.3,"0":134.5,"10":133,"20":131.7,"30":131.2,"40":130.2,"50":129.6}},"tableB":{"7000":{"100":[37,445],"110":[42,471],"120":[49,502],"130":[58,545],"140":[70,602],"145":[77,641],"150":[86,697]},"7500":{"100":[39,456],"110":[44,479],"120":[50,509],"130":[59,550],"140":[71,609],"145":[77,647],"150":[86,700]},"8000":{"100":[41,464],"110":[45,482],"120":[52,518],"130":[60,556],"140":[72,612],"145":[78,650],"150":[86,703]},"8500":{"100":[43,475],"110":[47,493],"120":[53,521],"130":[62,562],"140":[73,620],"145":[79,653],"150":[88,707]},"9000":{"100":[45,485],"110":[49,502],"120":[55,532],"130":[63,570],"140":[74,628],"145":[80,661],"150":[89,715]},"9500":{"100":[47,495],"110":[51,512],"120":[57,540],"130":[65,579],"140":[76,639],"145":[82,672],"150":[90,723]},"10000":{"100":[50,506],"110":[53,522],"120":[59,549],"130":[67,588],"140":[78,649],"145":[84,681],"150":[92,733]},"10500":{"100":[52,513],"110":[55,532],"120":[61,560],"130":[69,600],"140":[80,660],"145":[86,697]},"11000":{"100":[54,528],"110":[58,542],"120":[63,570],"130":[71,611],"140":[82,672],"145":[89,715]}},"aeoMaxCont":82.7},"08":{"hp":3000,"oat":-15,"tableA":{"7000":{"-50":147,"-40":144.8,"-30":143.7,"-20":141.3,"-10":138.2,"0":135.9,"10":132.9,"20":130.7,"30":128.1,"40":125.5,"50":122.9},"7500":{"-50":147.9,"-40":145.7,"-30":144.1,"-20":141.9,"-10":139.6,"0":137.4,"10":134.8,"20":132.6,"30":130.1,"40":127.7,"50":125.4},"8000":{"-50":148.5,"-40":146.3,"-30":144.3,"-20":142.4,"-10":140.5,"0":138.6,"10":136.2,"20":134.2,"30":131.7,"40":129.5,"50":127.5},"8500":{"-50":148.5,"-40":146.6,"-30":144.3,"-20":142.6,"-10":141.2,"0":139.3,"10":137.2,"20":135.3,"30":133,"40":131,"50":129.1},"9000":{"-50":148.2,"-40":146.5,"-30":144.3,"-20":142.6,"-10":141.3,"0":139.6,"10":137.7,"20":135.9,"30":133.8,"40":132,"50":130.3},"9500":{"-50":147.3,"-40":146,"-30":144,"-20":142.4,"-10":141.1,"0":139.5,"10":137.7,"20":136.2,"30":134.3,"40":132.7,"50":131.2},"10000":{"-50":145.9,"-40":145.2,"-30":143.5,"-20":142,"-10":140.4,"0":138.9,"10":137.3,"20":136,"30":134.4,"40":133.2,"50":131.6},"10500":{"-50":144,"-40":144,"-30":142.9,"-20":141.3,"-10":139.3,"0":137.9,"10":136.5,"20":135.5,"30":134.2,"40":133.2,"50":131.7},"11000":{"-50":141,"-40":142,"-30":142,"-20":140.5,"-10":137.9,"0":136.5,"10":135.4,"20":134.6,"30":133.7,"40":133,"50":131.4}},"tableB":{"7000":{"100":[37,449],"110":[41,469],"120":[47,499],"130":[55,540],"140":[67,592],"150":[81,672],"155":[90,705]},"7500":{"100":[38,456],"110":[43,479],"120":[48,507],"130":[56,547],"140":[68,597],"150":[82,679],"155":[90,707]},"8000":{"100":[41,469],"110":[45,488],"120":[50,512],"130":[58,551],"140":[69,603],"150":[84,687],"155":[90,712]},"8500":{"100":[43,477],"110":[47,495],"120":[52,522],"130":[60,560],"140":[70,610],"150":[85,692]},"9000":{"100":[45,488],"110":[49,508],"120":[54,531],"130":[61,568],"140":[72,620],"150":[86,702]},"9500":{"100":[47,500],"110":[51,515],"120":[56,541],"130":[63,575],"140":[73,628],"150":[87,708]},"10000":{"100":[50,511],"110":[53,529],"120":[58,551],"130":[65,588],"140":[76,642],"150":[89,720]},"10500":{"100":[52,524],"110":[55,539],"120":[60,562],"130":[68,599],"140":[78,653],"150":[92,738]},"11000":{"100":[54,532],"110":[58,550],"120":[63,572],"130":[70,611],"140":[81,672],"150":[95,758]}},"aeoMaxCont":82.7},"09":{"hp":3000,"oat":0,"tableA":{"7000":{"-50":150.3,"-40":149,"-30":147.3,"-20":143.5,"-10":140,"0":137.4,"10":135.2,"20":132.6,"30":129.9,"40":127.7,"50":125.7},"7500":{"-50":150.9,"-40":149.3,"-30":147.6,"-20":144.6,"-10":141.8,"0":139.3,"10":137,"20":134.4,"30":131.8,"40":129.7,"50":127.6},"8000":{"-50":151,"-40":149.4,"-30":147.7,"-20":145.4,"-10":143.1,"0":140.8,"10":138.4,"20":135.8,"30":133.5,"40":131.3,"50":129.3},"8500":{"-50":150.8,"-40":149.2,"-30":147.5,"-20":145.8,"-10":143.9,"0":141.7,"10":139.3,"20":136.9,"30":134.8,"40":132.6,"50":130.7},"9000":{"-50":150,"-40":148.6,"-30":147.1,"-20":145.7,"-10":144,"0":142.1,"10":139.8,"20":137.6,"30":135.7,"40":133.6,"50":131.8},"9500":{"-50":148.8,"-40":147.7,"-30":146.3,"-20":145.1,"-10":143.7,"0":142,"10":140,"20":137.9,"30":136.3,"40":134.2,"50":132.6},"10000":{"-50":147.1,"-40":146.4,"-30":145.3,"-20":144,"-10":142.7,"0":141.3,"10":139.6,"20":137.9,"30":136.5,"40":134.6,"50":133.1},"10500":{"-50":144.7,"-40":144.7,"-30":143.9,"-20":142.5,"-10":141.2,"0":140.1,"10":138.9,"20":137.5,"30":136.4,"40":134.6,"50":133.4},"11000":{"-50":142,"-40":143,"-30":142,"-20":140.6,"-10":139.1,"0":138.4,"10":137.9,"20":136.7,"30":136,"40":134.3,"50":133.4}},"tableB":{"7000":{"100":[36,450],"110":[40,470],"120":[46,497],"130":[53,532],"140":[63,583],"150":[76,650],"155":[86,706]},"7500":{"100":[38,460],"110":[42,480],"120":[47,507],"130":[54,541],"140":[64,590],"150":[77,652],"155":[86,709]},"8000":{"100":[40,470],"110":[44,488],"120":[49,512],"130":[56,549],"140":[66,598],"150":[79,661],"155":[87,712]},"8500":{"100":[42,481],"110":[46,499],"120":[51,522],"130":[58,559],"140":[68,605],"150":[80,671],"155":[88,720]},"9000":{"100":[45,492],"110":[48,509],"120":[53,532],"130":[60,569],"140":[69,612],"150":[82,683],"155":[90,732]},"9500":{"100":[47,507],"110":[50,520],"120":[55,543],"130":[62,578],"140":[72,625],"150":[84,692],"155":[92,745]},"10000":{"100":[49,513],"110":[52,531],"120":[57,552],"130":[64,589],"140":[74,638],"150":[87,712]},"10500":{"100":[52,529],"110":[55,542],"120":[60,569],"130":[67,602],"140":[77,652],"150":[91,738]},"11000":{"100":[55,542],"110":[58,558],"120":[63,582],"130":[70,618],"140":[80,671],"150":[94,758]}},"aeoMaxCont":82.7},"10":{"hp":3000,"oat":15,"tableA":{"7000":{"-50":154.1,"-40":152.4,"-30":148.9,"-20":144.4,"-10":141.3,"0":138.8,"10":137.3,"20":135.1,"30":132.9,"40":130.4,"50":128.4},"7500":{"-50":154.1,"-40":152.6,"-30":149.8,"-20":146.2,"-10":143.4,"0":140.6,"10":138.6,"20":136.2,"30":134,"40":131.7,"50":129.8},"8000":{"-50":153.8,"-40":152.4,"-30":150.4,"-20":147.6,"-10":144.9,"0":142.1,"10":139.6,"20":137.2,"30":135,"40":132.9,"50":131.1},"8500":{"-50":153,"-40":151.9,"-30":150.4,"-20":148.2,"-10":145.8,"0":143,"10":140.4,"20":138,"30":135.8,"40":133.9,"50":132.1},"9000":{"-50":151.8,"-40":150.9,"-30":149.8,"-20":148.2,"-10":146.1,"0":143.5,"10":140.9,"20":138.5,"30":136.5,"40":134.6,"50":132.9},"9500":{"-50":150.2,"-40":149.5,"-30":148.7,"-20":147.5,"-10":145.7,"0":143.4,"10":141.1,"20":138.9,"30":137.1,"40":135.2,"50":133.5},"10000":{"-50":147.9,"-40":147.5,"-30":147,"-20":146.1,"-10":144.8,"0":142.9,"10":141,"20":139.1,"30":137.4,"40":135.5,"50":133.9},"10500":{"-50":145.1,"-40":145.1,"-30":144.7,"-20":143.9,"-10":143.1,"0":141.8,"10":140.6,"20":139,"30":137.6,"40":135.7,"50":134.1},"11000":{"-50":142,"-40":142,"-30":142,"-20":141,"-10":141,"0":140.3,"10":140,"20":138.8,"30":137.6,"40":135.7,"50":134.1}},"tableB":{"7000":{"100":[36,452],"110":[39,470],"120":[44,496],"130":[51,533],"140":[61,580],"150":[73,640],"155":[81,682],"160":[89,731]},"7500":{"100":[38,462],"110":[41,480],"120":[46,507],"130":[53,540],"140":[62,587],"150":[74,647],"155":[82,689],"160":[89,733]},"8000":{"100":[40,476],"110":[43,491],"120":[48,513],"130":[55,550],"140":[64,597],"150":[76,655],"155":[84,701],"160":[91,745]},"8500":{"100":[42,485],"110":[45,502],"120":[50,525],"130":[57,558],"140":[66,605],"150":[78,662],"155":[85,708]},"9000":{"100":[44,498],"110":[47,512],"120":[52,536],"130":[59,570],"140":[68,615],"150":[80,678],"155":[87,720]},"9500":{"100":[47,511],"110":[50,525],"120":[54,547],"130":[61,580],"140":[70,626],"150":[83,694],"155":[91,743]},"10000":{"100":[49,522],"110":[52,538],"120":[57,559],"130":[64,596],"140":[73,640],"150":[86,714],"155":[93,758]},"10500":{"100":[52,537],"110":[55,551],"120":[60,575],"130":[67,611],"140":[77,659],"150":[90,738]},"11000":{"100":[55,551],"110":[58,565],"120":[63,591],"130":[70,627],"140":[80,680],"150":[94,763]}},"aeoMaxCont":82.7},"11":{"hp":3000,"oat":30,"tableA":{"7000":{"-50":157.1,"-40":154.8,"-30":149.7,"-20":145.3,"-10":142.5,"0":141.1,"10":139.9,"20":137.5,"30":134.8,"40":132.5,"50":129},"7500":{"-50":156.2,"-40":154.7,"-30":151.1,"-20":147.5,"-10":144.5,"0":142.4,"10":140.4,"20":138.1,"30":135.8,"40":133.6,"50":131.5},"8000":{"-50":155,"-40":154.2,"-30":151.9,"-20":149,"-10":146,"0":143.4,"10":140.8,"20":138.6,"30":136.5,"40":134.5,"50":132.8},"8500":{"-50":153.3,"-40":153.3,"-30":152,"-20":149.8,"-10":146.8,"0":144,"10":141.1,"20":138.9,"30":137.1,"40":135.2,"50":133.7},"9000":{"-50":151.4,"-40":151.4,"-30":151.4,"-20":149.7,"-10":146.9,"0":144.1,"10":141.2,"20":139.2,"30":137.4,"40":135.6,"50":134.2},"9500":{"-50":149.5,"-40":149.5,"-30":149.5,"-20":148.6,"-10":146.3,"0":143.9,"10":141.2,"20":139.4,"30":137.7,"40":135.8,"50":134.4},"10000":{"-50":146.4,"-40":146.4,"-30":146.4,"-20":146.4,"-10":144.9,"0":143.2,"10":141.2,"20":139.4,"30":137.7,"40":135.8,"50":134.2},"10500":{"-50":142.7,"-40":142.7,"-30":142.7,"-20":142.7,"-10":142.7,"0":142.1,"10":140.9,"20":139.3,"30":137.5,"40":135.5,"50":133.7},"11000":{"-50":138,"-40":138,"-30":138.9,"-20":138.9,"-10":138.9,"0":138.9,"10":138.9,"20":138.9,"30":137.2,"40":135.1,"50":132.9}},"tableB":{"7000":{"100":[35,454],"110":[38,471],"120":[43,496],"130":[50,531],"140":[59,575],"150":[70,632],"160":[85,718]},"7500":{"100":[38,468],"110":[41,481],"120":[45,505],"130":[52,540],"140":[60,581],"150":[72,639],"160":[86,719]},"8000":{"100":[40,479],"110":[43,493],"120":[47,515],"130":[54,550],"140":[62,591],"150":[73,647],"160":[88,731]},"8500":{"100":[42,490],"110":[45,505],"120":[49,528],"130":[56,560],"140":[64,605],"150":[76,659],"160":[90,743]},"9000":{"100":[44,501],"110":[47,515],"120":[51,538],"130":[58,571],"140":[67,617],"150":[78,672],"160":[93,762]},"9500":{"100":[47,515],"110":[49,530],"120":[54,552],"130":[61,583],"140":[70,631],"150":[82,691]},"10000":{"100":[50,530],"110":[52,545],"120":[57,567],"130":[64,600],"140":[73,647],"150":[86,714]},"10500":{"100":[53,544],"110":[55,558],"120":[60,581],"130":[68,618],"140":[77,667],"150":[90,742]},"11000":{"100":[56,560],"110":[59,577],"120":[64,601],"130":[72,640],"140":[82,693],"150":[95,780]}},"aeoMaxCont":80.3},"12":{"hp":3000,"oat":45,"tableA":{"7000":{"-50":152,"-40":152,"-30":151,"-20":147.8,"-10":146.5,"0":143.7,"10":140.5,"20":137,"30":134.3,"40":131.7,"50":129.8},"7500":{"-50":151,"-40":151,"-30":150,"-20":146.7,"-10":145.8,"0":143.9,"10":141.6,"20":138.9,"30":136.6,"40":134.3,"50":132.3},"8000":{"-50":149,"-40":149,"-30":148,"-20":147,"-10":144.5,"0":143.4,"10":141.9,"20":140,"30":138.1,"40":135.9,"50":134},"8500":{"-50":147,"-40":147,"-30":146,"-20":146,"-10":142.6,"0":142.2,"10":141.4,"20":140.1,"30":138.5,"40":136.6,"50":134.8},"9000":{"-50":142,"-40":141,"-30":139.9,"-20":139.9,"-10":139.9,"0":139,"10":139,"20":139,"30":137.7,"40":136.3,"50":134.8},"9500":{"-50":138,"-40":138,"-30":137,"-20":137,"-10":136.4,"0":136.4,"10":136.4,"20":136.4,"30":135.7,"40":134.8,"50":133.8},"10000":{"-50":133,"-40":133,"-30":133,"-20":133,"-10":133,"0":133,"10":133,"20":133,"30":133,"40":133,"50":133},"10500":{"-50":130,"-40":130,"-30":130,"-20":130,"-10":130,"0":130,"10":130,"20":130,"30":130,"40":130,"50":130},"11000":{"-50":128,"-40":128,"-30":128,"-20":128,"-10":128,"0":128,"10":128,"20":128,"30":128,"40":128,"50":128}},"tableB":{"7000":{"100":[35,456],"110":[38,471],"120":[42,495],"130":[48,528],"140":[57,571],"150":[68,630]},"7500":{"100":[37,469],"110":[40,483],"120":[44,506],"130":[50,540],"140":[59,582],"150":[70,640]},"8000":{"100":[40,481],"110":[42,496],"120":[46,518],"130":[52,549],"140":[61,592],"150":[72,650]},"8500":{"100":[42,492],"110":[45,508],"120":[49,531],"130":[55,562],"140":[63,605],"150":[75,666]},"9000":{"100":[44,508],"110":[47,520],"120":[51,542],"130":[57,574],"140":[66,620],"150":[78,680]},"9500":{"100":[47,521],"110":[50,535],"120":[54,557],"130":[60,590],"140":[70,640]},"10000":{"100":[50,538],"110":[53,551],"120":[57,573],"130":[64,610]},"10500":{"100":[54,555],"110":[56,569],"120":[61,592],"130":[68,630]},"11000":{"100":[57,573],"110":[60,590],"120":[66,618]}},"aeoMaxCont":65.7},"13":{"hp":6000,"oat":-30,"tableA":{"7000":{"-50":145.4,"-40":142.9,"-30":140.6,"-20":139.1,"-10":138.1,"0":136.6,"10":134.4,"20":132.7,"30":129.9,"40":128.1,"50":125.7},"7500":{"-50":146.7,"-40":143.9,"-30":141.5,"-20":139.5,"-10":138.1,"0":136.6,"10":134.8,"20":133.2,"30":131,"40":129.3,"50":127.4},"8000":{"-50":147.4,"-40":144.7,"-30":142.2,"-20":139.8,"-10":138.1,"0":136.6,"10":135.1,"20":133.6,"30":131.7,"40":130.3,"50":128.8},"8500":{"-50":147.8,"-40":145.1,"-30":142.6,"-20":140,"-10":138.1,"0":136.6,"10":135.1,"20":133.7,"30":132.2,"40":130.9,"50":129.6},"9000":{"-50":147.7,"-40":145.2,"-30":142.6,"-20":140,"-10":138,"0":136.5,"10":135.1,"20":133.7,"30":132.3,"40":131.1,"50":130},"9500":{"-50":147.2,"-40":145,"-30":142.5,"-20":140,"-10":137.9,"0":136.2,"10":134.8,"20":133.4,"30":132.1,"40":131,"50":129.9},"10000":{"-50":146.2,"-40":144.5,"-30":142.1,"-20":139.8,"-10":137.7,"0":135.9,"10":134.5,"20":133,"30":131.6,"40":130.5,"50":129.3},"10500":{"-50":144.6,"-40":143.6,"-30":141.5,"-20":139.4,"-10":137.5,"0":135.6,"10":133.9,"20":132.3,"30":130.8,"40":129.6,"50":128.3},"11000":{"-50":142.6,"-40":142.6,"-30":140.5,"-20":138.9,"-10":137.2,"0":135.1,"10":133.2,"20":131.5,"30":129.7,"40":128.3,"50":126.9}},"tableB":{"7000":{"100":[36,416],"110":[40,436],"120":[46,462],"130":[53,498],"140":[63,550],"150":[77,625],"155":[86,681]},"7500":{"100":[38,426],"110":[42,445],"120":[47,470],"130":[55,505],"140":[64,555],"150":[78,630],"155":[86,683]},"8000":{"100":[40,435],"110":[44,453],"120":[49,478],"130":[56,512],"140":[66,562],"150":[79,638],"155":[87,688]},"8500":{"100":[42,448],"110":[46,462],"120":[51,487],"130":[58,520],"140":[68,572],"150":[81,649],"155":[89,702]},"9000":{"100":[45,457],"110":[48,473],"120":[53,496],"130":[60,530],"140":[70,581],"150":[82,659],"155":[91,715]},"9500":{"100":[47,469],"110":[50,483],"120":[55,507],"130":[62,540],"140":[72,595],"150":[84,671]},"10000":{"100":[49,479],"110":[52,493],"120":[57,516],"130":[64,554],"140":[74,610]},"10500":{"100":[52,491],"110":[55,506],"120":[60,530],"130":[67,569],"140":[77,627]},"11000":{"100":[55,504],"110":[58,519],"120":[62,543],"130":[70,581],"140":[80,644]}},"aeoMaxCont":82.7},"14":{"hp":6000,"oat":-15,"tableA":{"7000":{"-50":148,"-40":145.7,"-30":144.4,"-20":143.3,"-10":141.5,"0":139.2,"10":136.8,"20":134.1,"30":132.2,"40":129.9,"50":127.6},"7500":{"-50":149,"-40":146.4,"-30":144.5,"-20":143.2,"-10":141.5,"0":139.5,"10":137.5,"20":135.2,"30":133.5,"40":131.5,"50":129.6},"8000":{"-50":149.6,"-40":146.8,"-30":144.5,"-20":142.9,"-10":141.3,"0":139.7,"10":137.9,"20":136,"30":134.4,"40":132.7,"50":131},"8500":{"-50":149.7,"-40":146.9,"-30":144.3,"-20":142.6,"-10":141,"0":139.5,"10":138,"20":136.3,"30":134.9,"40":133.3,"50":131.9},"9000":{"-50":149.4,"-40":146.7,"-30":144.1,"-20":142.2,"-10":140.5,"0":139.2,"10":137.8,"20":136.2,"30":134.9,"40":133.4,"50":132.2},"9500":{"-50":148.5,"-40":146.1,"-30":143.7,"-20":141.7,"-10":139.9,"0":138.5,"10":137.1,"20":135.6,"30":134.4,"40":133.1,"50":132},"10000":{"-50":147,"-40":145.2,"-30":143.1,"-20":141.1,"-10":139.3,"0":137.6,"10":136.1,"20":134.7,"30":133.5,"40":132.2,"50":131.2},"10500":{"-50":145,"-40":144,"-30":142.4,"-20":140.4,"-10":138.4,"0":136.5,"10":134.8,"20":133.3,"30":132.1,"40":130.9,"50":129.9},"11000":{"-50":142.4,"-40":142.4,"-30":141.7,"-20":139.6,"-10":137.5,"0":135.1,"10":133.1,"20":131.4,"30":130.3,"40":129,"50":128.1}},"tableB":{"7000":{"100":[36,418],"110":[39,435],"120":[44,460],"130":[51,494],"140":[61,539],"150":[73,606],"160":[89,707]},"7500":{"100":[38,429],"110":[41,445],"120":[46,469],"130":[53,503],"140":[62,546],"150":[74,612],"160":[90,711]},"8000":{"100":[40,440],"110":[43,454],"120":[48,480],"130":[55,510],"140":[64,554],"150":[76,621],"160":[91,719]},"8500":{"100":[42,450],"110":[45,465],"120":[50,489],"130":[57,518],"140":[66,565],"150":[77,632],"160":[93,733]},"9000":{"100":[44,462],"110":[47,476],"120":[52,498],"130":[59,530],"140":[68,577],"150":[80,649],"160":[95,747]},"9500":{"100":[47,474],"110":[50,487],"120":[54,508],"130":[61,541],"140":[70,590],"150":[83,665],"160":[99,770]},"10000":{"100":[49,485],"110":[52,500],"120":[57,522],"130":[64,554],"140":[73,607],"150":[86,685]},"10500":{"100":[52,499],"110":[55,512],"120":[60,536],"130":[67,570],"140":[77,630],"150":[90,715]},"11000":{"100":[55,512],"110":[58,527],"120":[63,551],"130":[70,589],"140":[81,652],"150":[95,745]}},"aeoMaxCont":82.7},"15":{"hp":6000,"oat":0,"tableA":{"7000":{"-50":150.5,"-40":149.1,"-30":148.1,"-20":146.8,"-10":144.1,"0":141.2,"10":138.1,"20":135.4,"30":133,"40":131.1,"50":129},"7500":{"-50":151.2,"-40":149.2,"-30":147.7,"-20":146.4,"-10":144.2,"0":141.8,"10":139.4,"20":137.1,"30":134.8,"40":132.9,"50":130.9},"8000":{"-50":151.6,"-40":149.1,"-30":147.2,"-20":145.8,"-10":144,"0":142.1,"10":140.2,"20":138.2,"30":136,"40":134.2,"50":132.4},"8500":{"-50":151.4,"-40":148.7,"-30":146.5,"-20":145,"-10":143.5,"0":142,"10":140.4,"20":138.7,"30":136.7,"40":135,"50":133.3},"9000":{"-50":150.7,"-40":147.9,"-30":145.7,"-20":144.2,"-10":142.8,"0":141.5,"10":140,"20":138.6,"30":136.7,"40":135.2,"50":133.5},"9500":{"-50":149.4,"-40":146.9,"-30":144.7,"-20":143.1,"-10":141.7,"0":140.4,"10":139.1,"20":137.9,"30":136.1,"40":134.8,"50":133.3},"10000":{"-50":147.4,"-40":145.6,"-30":143.7,"-20":142,"-10":140.4,"0":139,"10":137.6,"20":136.4,"30":134.9,"40":133.8,"50":132.3},"10500":{"-50":144.7,"-40":143.9,"-30":142.5,"-20":140.6,"-10":138.7,"0":137,"10":135.4,"20":134.3,"30":132.9,"40":132.1,"50":130.7},"11000":{"-50":141,"-40":142,"-30":141.1,"-20":139.2,"-10":136.7,"0":134.6,"10":132.7,"20":131.6,"30":130.4,"40":129.9,"50":128.6}},"tableB":{"7000":{"100":[35,422],"110":[38,438],"120":[43,460],"130":[50,492],"140":[58,537],"150":[70,594],"160":[84,680]},"7500":{"100":[37,432],"110":[40,448],"120":[45,470],"130":[51,502],"140":[60,544],"150":[71,602],"160":[85,690]},"8000":{"100":[40,444],"110":[43,458],"120":[47,480],"130":[53,511],"140":[62,552],"150":[73,613],"160":[88,703]},"8500":{"100":[42,456],"110":[45,468],"120":[49,490],"130":[55,521],"140":[64,562],"150":[75,628],"160":[90,718]},"9000":{"100":[44,467],"110":[47,480],"120":[51,500],"130":[58,532],"140":[67,577],"150":[78,642],"160":[93,739]},"9500":{"100":[47,480],"110":[49,491],"120":[54,514],"130":[61,546],"140":[70,591],"150":[82,663],"160":[97,767]},"10000":{"100":[50,494],"110":[52,507],"120":[57,528],"130":[64,562],"140":[73,612],"150":[86,691]},"10500":{"100":[53,508],"110":[55,522],"120":[60,546],"130":[67,580],"140":[77,636],"150":[91,725]},"11000":{"100":[56,526],"110":[59,539],"120":[64,563],"130":[72,606],"140":[82,666],"150":[96,775]}},"aeoMaxCont":82.7},"16":{"hp":6000,"oat":15,"tableA":{"7000":{"-50":153.5,"-40":152.1,"-30":151.1,"-20":149.2,"-10":145.4,"0":141.8,"10":138.6,"20":136.7,"30":133.9,"40":132.2,"50":130.6},"7500":{"-50":153.5,"-40":152.1,"-30":150.8,"-20":148.9,"-10":145.9,"0":143,"10":140.3,"20":138.3,"30":135.8,"40":134,"50":132.3},"8000":{"-50":153.3,"-40":151.5,"-30":150.1,"-20":148.3,"-10":146.1,"0":143.8,"10":141.5,"20":139.4,"30":137.2,"40":135.3,"50":133.6},"8500":{"-50":152.4,"-40":150.5,"-30":149,"-20":147.4,"-10":145.8,"0":143.8,"10":141.9,"20":139.9,"30":137.9,"40":136,"50":134.3},"9000":{"-50":150.9,"-40":149.1,"-30":147.6,"-20":146.1,"-10":144.9,"0":143.3,"10":141.6,"20":139.7,"30":137.9,"40":136,"50":134.5},"9500":{"-50":148.7,"-40":147.1,"-30":145.7,"-20":144.4,"-10":143.4,"0":142,"10":140.5,"20":138.8,"30":137.2,"40":135.5,"50":134.1},"10000":{"-50":145.7,"-40":144.5,"-30":143.4,"-20":142.3,"-10":141.3,"0":140,"10":138.6,"20":137.1,"30":135.8,"40":134.4,"50":133.1},"10500":{"-50":142,"-40":141.4,"-30":140.6,"-20":139.7,"-10":138.5,"0":137.1,"10":135.7,"20":134.6,"30":133.5,"40":132.5,"50":131.6},"11000":{"-50":136,"-40":137,"-30":137,"-20":135,"-10":135.3,"0":133.6,"10":132.1,"20":131.3,"30":130.5,"40":130,"50":129.4}},"tableB":{"7000":{"100":[35,425],"110":[38,439],"120":[42,461],"130":[48,492],"140":[56,533],"150":[67,584],"160":[81,663]},"7500":{"100":[37,436],"110":[40,450],"120":[44,471],"130":[50,500],"140":[58,542],"150":[69,595],"160":[83,678]},"8000":{"100":[40,449],"110":[42,460],"120":[46,482],"130":[52,512],"140":[60,553],"150":[71,607],"160":[85,691]},"8500":{"100":[42,460],"110":[44,473],"120":[49,494],"130":[55,525],"140":[63,565],"150":[74,623],"160":[88,711]},"9000":{"100":[44,474],"110":[47,487],"120":[51,506],"130":[58,539],"140":[66,579],"150":[78,644],"160":[92,737]},"9500":{"100":[47,488],"110":[50,500],"120":[54,520],"130":[61,555],"140":[70,598],"150":[81,665]},"10000":{"100":[50,502],"110":[53,516],"120":[58,538],"130":[64,571],"140":[74,621],"150":[86,698]},"10500":{"100":[54,519],"110":[57,535],"120":[61,558],"130":[69,595],"140":[79,651],"150":[92,737]},"11000":{"100":[58,539],"110":[61,555],"120":[66,579],"130":[74,622],"140":[85,690]}},"aeoMaxCont":80},"17":{"hp":6000,"oat":30,"tableA":{"7000":{"-50":154,"-40":154,"-30":153,"-20":150,"-10":146.2,"0":142.2,"10":139.4,"20":137.5,"30":135.5,"40":133.5,"50":132.2},"7500":{"-50":153,"-40":153,"-30":152,"-20":150,"-10":146.9,"0":143.7,"10":141.2,"20":139.3,"30":137.4,"40":135.3,"50":133.8},"8000":{"-50":151,"-40":150.5,"-30":150.5,"-20":149.1,"-10":147.1,"0":144.6,"10":142.4,"20":140.4,"30":138.5,"40":136.5,"50":134.8},"8500":{"-50":148,"-40":148,"-30":148,"-20":147.4,"-10":146.3,"0":144.6,"10":142.6,"20":140.7,"30":138.9,"40":136.9,"50":135.2},"9000":{"-50":145,"-40":145,"-30":145,"-20":145,"-10":145,"0":143.5,"10":141.8,"20":140,"30":138.4,"40":136.5,"50":134.9},"9500":{"-50":141,"-40":141.1,"-30":141.1,"-20":141.1,"-10":141.1,"0":141.1,"10":139.7,"20":138.2,"30":136.8,"40":135.3,"50":133.8},"10000":{"-50":137,"-40":137,"-30":137,"-20":137,"-10":136,"0":136,"10":136,"20":135.1,"30":134.1,"40":133,"50":132},"10500":{"-50":130,"-40":130,"-30":130,"-20":130,"-10":130,"0":130,"10":130,"20":130,"30":130,"40":130,"50":129.4},"11000":{"-50":125,"-40":125,"-30":125,"-20":125,"-10":125,"0":125,"10":125,"20":125,"30":125,"40":126,"50":127}},"tableB":{"7000":{"100":[35,427],"110":[37,440],"120":[41,460],"130":[47,492],"140":[55,531],"150":[65,580],"160":[78,652]},"7500":{"100":[37,439],"110":[40,452],"120":[43,472],"130":[49,502],"140":[57,542],"150":[67,592],"160":[80,665]},"8000":{"100":[39,452],"110":[42,465],"120":[46,485],"130":[52,515],"140":[59,556],"150":[70,604],"160":[83,683]},"8500":{"100":[42,464],"110":[44,478],"120":[48,498],"130":[54,529],"140":[62,570],"150":[73,622],"160":[87,697]},"9000":{"100":[45,480],"110":[47,492],"120":[51,512],"130":[57,544],"140":[66,586],"150":[77,645]},"9500":{"100":[48,495],"110":[50,508],"120":[54,529],"130":[61,561],"140":[70,606],"150":[82,678]},"10000":{"100":[51,512],"110":[54,525],"120":[59,550],"130":[65,583],"140":[75,633]},"10500":{"100":[55,533],"110":[58,548],"120":[63,572],"130":[71,610]},"11000":{"100":[60,558],"110":[63,574],"120":[69,600]}},"aeoMaxCont":70.5},"18":{"hp":9000,"oat":-30,"tableA":{"7000":{"-50":146.8,"-40":144.8,"-30":142.5,"-20":140.5,"-10":138.5,"0":137.2,"10":135.6,"20":134.2,"30":132.9,"40":131.4,"50":129.6},"7500":{"-50":147.5,"-40":145,"-30":142.7,"-20":140.7,"-10":138.6,"0":137.1,"10":135.5,"20":134.2,"30":132.9,"40":131.4,"50":129.9},"8000":{"-50":147.8,"-40":145.1,"-30":142.7,"-20":140.7,"-10":138.6,"0":136.9,"10":135.4,"20":134.1,"30":132.8,"40":131.3,"50":130},"8500":{"-50":147.7,"-40":144.8,"-30":142.6,"-20":140.5,"-10":138.4,"0":136.6,"10":135,"20":133.7,"30":132.4,"40":131,"50":129.9},"9000":{"-50":147.4,"-40":144.5,"-30":142.2,"-20":140.1,"-10":138,"0":136.1,"10":134.4,"20":133.1,"30":131.8,"40":130.4,"50":129.5},"9500":{"-50":146.6,"-40":143.9,"-30":141.7,"-20":139.5,"-10":137.4,"0":135.5,"10":133.7,"20":132.3,"30":131,"40":129.7,"50":128.7},"10000":{"-50":145.4,"-40":143.2,"-30":140.8,"-20":138.7,"-10":136.6,"0":134.7,"10":132.9,"20":131.4,"30":130,"40":128.8,"50":127.7},"10500":{"-50":143.8,"-40":142.1,"-30":139.8,"-20":137.7,"-10":135.5,"0":133.9,"10":131.9,"20":130.3,"30":128.8,"40":127.6,"50":126.4},"11000":{"-50":141.7,"-40":141,"-30":138.7,"-20":136.6,"-10":134.3,"0":132.9,"10":130.8,"20":129,"30":127.4,"40":126.3,"50":124.8}},"tableB":{"7000":{"100":[35,390],"110":[38,405],"120":[43,426],"130":[50,458],"140":[58,501],"150":[70,567],"160":[85,661]},"7500":{"100":[37,400],"110":[40,415],"120":[45,436],"130":[51,466],"140":[60,510],"150":[71,578],"160":[86,671]},"8000":{"100":[40,412],"110":[43,425],"120":[47,445],"130":[53,475],"140":[62,521],"150":[73,588],"160":[87,680]},"8500":{"100":[42,422],"110":[45,435],"120":[49,455],"130":[55,486],"140":[64,533],"150":[75,602],"160":[88,688]},"9000":{"100":[44,433],"110":[47,445],"120":[51,466],"130":[58,499],"140":[67,549],"150":[78,620],"160":[90,702]},"9500":{"100":[47,445],"110":[50,458],"120":[54,479],"130":[61,513],"140":[70,567],"150":[82,641],"160":[93,725]},"10000":{"100":[50,459],"110":[52,470],"120":[57,494],"130":[64,532],"140":[73,588],"150":[86,670],"160":[97,757]},"10500":{"100":[53,472],"110":[55,485],"120":[60,512],"130":[67,552],"140":[77,611]},"11000":{"100":[56,490],"110":[59,506],"120":[64,533],"130":[72,579],"140":[82,644]}},"aeoMaxCont":82.7},"19":{"hp":9000,"oat":-15,"tableA":{"7000":{"-50":149,"-40":146.9,"-30":145.2,"-20":143.3,"-10":142,"0":140.6,"10":139.1,"20":136.8,"30":134.7,"40":133,"50":131.4},"7500":{"-50":149.6,"-40":147.2,"-30":145.2,"-20":143.1,"-10":141.5,"0":140,"10":138.5,"20":136.8,"30":134.9,"40":133.4,"50":131.9},"8000":{"-50":149.8,"-40":147.1,"-30":144.9,"-20":142.7,"-10":140.9,"0":139.3,"10":137.9,"20":136.4,"30":134.8,"40":133.4,"50":132.1},"8500":{"-50":149.5,"-40":146.8,"-30":144.5,"-20":142.1,"-10":140.2,"0":138.5,"10":137,"20":135.8,"30":134.4,"40":133.1,"50":131.9},"9000":{"-50":148.7,"-40":146.1,"-30":143.6,"-20":141.3,"-10":139.3,"0":137.5,"10":136,"20":134.9,"30":133.6,"40":132.3,"50":131.2},"9500":{"-50":147.4,"-40":145,"-30":142.6,"-20":140.3,"-10":138.2,"0":136.4,"10":134.9,"20":133.8,"30":132.4,"40":131.1,"50":130.1},"10000":{"-50":145.4,"-40":143.5,"-30":141.2,"-20":139.1,"-10":136.9,"0":135.2,"10":133.6,"20":132.3,"30":131,"40":129.5,"50":128.6},"10500":{"-50":142.8,"-40":141.6,"-30":139.6,"-20":137.7,"-10":135.5,"0":133.8,"10":132.2,"20":130.6,"30":129,"40":127.4,"50":126.6},"11000":{"-50":139.3,"-40":139.3,"-30":137.7,"-20":136.1,"-10":133.9,"0":132.3,"10":130.6,"20":128.6,"30":126.7,"40":124.9,"50":124.1}},"tableB":{"7000":{"100":[35,391],"110":[38,408],"120":[42,428],"130":[48,456],"140":[56,494],"150":[67,554],"160":[81,640],"165":[90,705]},"7500":{"100":[37,405],"110":[40,418],"120":[44,437],"130":[50,466],"140":[58,505],"150":[69,566],"160":[83,651],"165":[91,712]},"8000":{"100":[40,415],"110":[42,428],"120":[46,448],"130":[52,475],"140":[60,518],"150":[71,580],"160":[85,669]},"8500":{"100":[42,428],"110":[45,440],"120":[49,458],"130":[54,487],"140":[63,530],"150":[74,597],"160":[87,683]},"9000":{"100":[44,439],"110":[47,450],"120":[51,470],"130":[57,500],"140":[66,550],"150":[77,619],"160":[88,690]},"9500":{"100":[47,452],"110":[50,465],"120":[54,485],"130":[61,519],"140":[69,569],"150":[81,643],"160":[92,720]},"10000":{"100":[50,468],"110":[53,479],"120":[58,502],"130":[64,540],"140":[74,595],"150":[86,676]},"10500":{"100":[54,483],"110":[57,498],"120":[61,522],"130":[69,565],"140":[79,628],"150":[92,720]},"11000":{"100":[58,505],"110":[61,520],"120":[66,550],"130":[74,599],"140":[85,667]}},"aeoMaxCont":82.7},"20":{"hp":9000,"oat":0,"tableA":{"7000":{"-50":151.3,"-40":148.6,"-30":146.8,"-20":146,"-10":145.1,"0":143.6,"10":141.4,"20":138.8,"30":136.6,"40":134.5,"50":132.5},"7500":{"-50":151.6,"-40":149,"-30":147,"-20":145.6,"-10":144.3,"0":142.7,"10":140.9,"20":138.8,"30":136.7,"40":135.1,"50":133.3},"8000":{"-50":151.4,"-40":149,"-30":146.8,"-20":144.9,"-10":143.2,"0":141.5,"10":140,"20":138.3,"30":136.5,"40":135.3,"50":133.6},"8500":{"-50":150.5,"-40":148.3,"-30":146.1,"-20":143.8,"-10":141.9,"0":140.2,"10":138.8,"20":137.5,"30":135.9,"40":134.8,"50":133.4},"9000":{"-50":148.9,"-40":146.9,"-30":144.7,"-20":142.3,"-10":140.3,"0":138.7,"10":137.4,"20":136.2,"30":134.8,"40":133.8,"50":132.5},"9500":{"-50":146.3,"-40":144.7,"-30":142.7,"-20":140.4,"-10":138.6,"0":137,"10":135.7,"20":134.5,"30":133.2,"40":132.2,"50":131.1},"10000":{"-50":142.6,"-40":141.5,"-30":140,"-20":138.2,"-10":136.5,"0":135.1,"10":133.6,"20":132.3,"30":131.1,"40":130,"50":129},"10500":{"-50":137.3,"-40":137.3,"-30":136.6,"-20":135.4,"-10":134.2,"0":133,"10":131.2,"20":129.6,"30":128.5,"40":127.1,"50":126.2},"11000":{"-50":131,"-40":132,"-30":132,"-20":132,"-10":132,"0":131,"10":128.6,"20":126.5,"30":125.6,"40":123.8,"50":123}},"tableB":{"7000":{"100":[35,397],"110":[37,409],"120":[41,428],"130":[47,456],"140":[55,494],"150":[65,547],"160":[78,624],"165":[86,681]},"7500":{"100":[37,408],"110":[39,420],"120":[43,439],"130":[49,467],"140":[57,504],"150":[67,560],"160":[80,640],"165":[88,695]},"8000":{"100":[39,420],"110":[42,432],"120":[46,450],"130":[52,479],"140":[59,517],"150":[70,575],"160":[83,660]},"8500":{"100":[42,433],"110":[44,444],"120":[48,462],"130":[54,490],"140":[62,531],"150":[73,595],"160":[87,688]},"9000":{"100":[45,447],"110":[47,458],"120":[51,477],"130":[57,507],"140":[66,543],"150":[77,621],"160":[92,720]},"9500":{"100":[48,461],"110":[51,474],"120":[55,493],"130":[61,528],"140":[70,578],"150":[82,652]},"10000":{"100":[51,479],"110":[54,491],"120":[59,514],"130":[66,550],"140":[76,610],"150":[88,695]},"10500":{"100":[56,499],"110":[59,514],"120":[64,540],"130":[71,585],"140":[82,650]},"11000":{"100":[61,525],"110":[64,543],"120":[70,576],"130":[78,629],"140":[89,703]}},"aeoMaxCont":78.4},"21":{"hp":9000,"oat":15,"tableA":{"7000":{"-50":154,"-40":152,"-30":150.3,"-20":148.6,"-10":147.1,"0":144.6,"10":141.5,"20":138.8,"30":136.6,"40":134.6,"50":132.8},"7500":{"-50":152.9,"-40":151,"-30":149.5,"-20":148,"-10":146.5,"0":144.4,"10":141.8,"20":139.6,"30":137.7,"40":135.7,"50":134},"8000":{"-50":150.9,"-40":149.5,"-30":148.2,"-20":146.8,"-10":145.4,"0":143.7,"10":141.7,"20":139.9,"30":138.1,"40":136.2,"50":134.7},"8500":{"-50":148.1,"-40":147.2,"-30":146.1,"-20":144.9,"-10":143.6,"0":142.3,"10":140.7,"20":139.2,"30":137.7,"40":135.9,"50":134.5},"9000":{"-50":145,"-40":144,"-30":143.2,"-20":142.1,"-10":141,"0":140,"10":138.8,"20":137.7,"30":136.3,"40":134.7,"50":133.4},"9500":{"-50":140,"-40":140,"-30":139,"-20":138.3,"-10":137.3,"0":136.6,"10":135.8,"20":135,"30":133.8,"40":132.4,"50":131.3},"10000":{"-50":133.4,"-40":133.4,"-30":133.4,"-20":133.4,"-10":132.2,"0":131.6,"10":131.6,"20":130.8,"30":129.9,"40":128.8,"50":128},"10500":{"-50":126,"-40":125,"-30":125,"-20":124,"-10":124,"0":124,"10":124,"20":124,"30":123,"40":123,"50":123},"11000":{"-50":115,"-40":115,"-30":115,"-20":115,"-10":115,"0":115,"10":115,"20":115,"30":115,"40":115,"50":115}},"tableB":{"7000":{"100":[35,400],"110":[37,411],"120":[41,431],"130":[46,459],"140":[53,493],"150":[63,541],"160":[75,612]},"7500":{"100":[37,412],"110":[39,423],"120":[43,442],"130":[49,470],"140":[56,507],"150":[66,557],"160":[78,635]},"8000":{"100":[40,425],"110":[42,436],"120":[45,455],"130":[51,483],"140":[59,519],"150":[69,577],"160":[82,660]},"8500":{"100":[42,438],"110":[45,451],"120":[48,470],"130":[54,499],"140":[62,538],"150":[73,599]},"9000":{"100":[45,454],"110":[48,467],"120":[52,488],"130":[58,517],"140":[67,562],"150":[78,635]},"9500":{"100":[49,472],"110":[52,486],"120":[56,507],"130":[63,540],"140":[72,591]},"10000":{"100":[53,493],"110":[56,507],"120":[61,531],"130":[68,572],"140":[78,635]},"10500":{"100":[58,519],"110":[62,535],"120":[67,555],"130":[75,613]},"11000":{"100":[65,553],"110":[69,575],"120":[75,611],"130":[83,665]}},"aeoMaxCont":70.9},"22":{"hp":9000,"oat":30,"tableA":{"7000":{"-50":150,"-40":150,"-30":150,"-20":150,"-10":150,"0":146,"10":143,"20":139.2,"30":136.8,"40":134.9,"50":133.4},"7500":{"-50":147,"-40":147,"-30":147,"-20":147,"-10":147,"0":144.6,"10":142.2,"20":139.9,"30":138,"40":136.3,"50":134.8},"8000":{"-50":143,"-40":143,"-30":143,"-20":143,"-10":143,"0":142.4,"10":141.2,"20":139.8,"30":138.3,"40":136.7,"50":135.2},"8500":{"-50":139,"-40":139,"-30":139,"-20":138.9,"-10":138.9,"0":138.9,"10":138.9,"20":138.3,"30":137.2,"40":135.8,"50":134.3},"9000":{"-50":134,"-40":134,"-30":134,"-20":134,"-10":134,"0":134,"10":134,"20":134,"30":134,"40":133,"50":131.5},"9500":{"-50":126,"-40":126,"-30":126,"-20":126,"-10":126,"0":126,"10":126,"20":126,"30":126,"40":126,"50":126},"10000":{"-50":122,"-40":122,"-30":122,"-20":122,"-10":122,"0":122,"10":122,"20":122,"30":122,"40":122,"50":122},"10500":{"-50":115,"-40":115,"-30":115,"-20":115,"-10":115,"0":115,"10":115,"20":115,"30":115,"40":115,"50":115},"11000":{}},"tableB":{"7000":{"100":[35,403],"110":[37,417],"120":[40,432],"130":[45,458],"140":[52,494],"150":[62,539],"160":[73,605]},"7500":{"100":[37,417],"110":[39,428],"120":[43,446],"130":[48,473],"140":[55,510],"150":[65,560],"160":[77,630]},"8000":{"100":[40,431],"110":[42,441],"120":[46,460],"130":[51,489],"140":[59,525],"150":[69,583],"160":[80,645]},"8500":{"100":[43,447],"110":[45,458],"120":[49,479],"130":[55,507],"140":[63,545],"150":[74,607]},"9000":{"100":[46,464],"110":[49,478],"120":[53,498],"130":[59,529],"140":[68,578],"150":[78,635]},"9500":{"100":[51,486],"110":[53,500],"120":[58,523],"130":[65,557],"140":[74,616]},"10000":{"100":[56,514],"110":[59,528],"120":[64,553],"130":[72,600],"140":[80,645]},"10500":{"100":[62,545],"110":[66,564],"120":[72,600],"130":[80,645]},"11000":{"100":[71,595],"110":[75,618],"120":[80,645]}},"aeoMaxCont":61.3},"23":{"hp":12000,"oat":-30,"tableA":{"7000":{"-50":147.4,"-40":145.1,"-30":142.9,"-20":141.1,"-10":138.8,"0":137,"10":135.3,"20":134.4,"30":133.1,"40":132.2,"50":130.9},"7500":{"-50":147.7,"-40":145.2,"-30":142.8,"-20":140.8,"-10":138.7,"0":136.9,"10":135.2,"20":134.1,"30":132.7,"40":131.6,"50":130.4},"8000":{"-50":147.6,"-40":145,"-30":142.5,"-20":140.3,"-10":138.3,"0":136.5,"10":134.8,"20":133.6,"30":132,"40":130.7,"50":129.7},"8500":{"-50":147,"-40":144.4,"-30":141.8,"-20":139.5,"-10":137.6,"0":135.7,"10":134.1,"20":132.7,"30":131.1,"40":129.7,"50":128.7},"9000":{"-50":145.9,"-40":143.3,"-30":140.8,"-20":138.5,"-10":136.6,"0":134.7,"10":133.1,"20":131.7,"30":130.1,"40":128.6,"50":127.6},"9500":{"-50":144.2,"-40":141.8,"-30":139.5,"-20":137.2,"-10":135.3,"0":133.5,"10":131.8,"20":130.3,"30":128.7,"40":127.2,"50":126.1},"10000":{"-50":141.6,"-40":139.8,"-30":137.7,"-20":135.6,"-10":133.7,"0":131.8,"10":130.2,"20":128.6,"30":127.1,"40":125.7,"50":124.6},"10500":{"-50":138.3,"-40":137.2,"-30":135.6,"-20":133.7,"-10":131.7,"0":129.9,"10":128.3,"20":126.7,"30":125.2,"40":124,"50":122.7},"11000":{"-50":134,"-40":134,"-30":133.1,"-20":131.6,"-10":129.4,"0":127.7,"10":126.1,"20":124.5,"30":123.1,"40":122.2,"50":120.6}},"tableB":{"7000":{"100":[35,367],"110":[37,378],"120":[41,396],"130":[47,423],"140":[55,462],"150":[65,522],"160":[78,609],"165":[86,675]},"7500":{"100":[37,378],"110":[40,388],"120":[43,407],"130":[49,433],"140":[57,476],"150":[67,536],"160":[80,628],"165":[89,700]},"8000":{"100":[39,388],"110":[42,400],"120":[46,418],"130":[51,444],"140":[59,490],"150":[70,555],"160":[83,650],"165":[92,720]},"8500":{"100":[42,399],"110":[45,412],"120":[48,430],"130":[54,460],"140":[62,510],"150":[73,576],"160":[87,682]},"9000":{"100":[45,413],"110":[47,424],"120":[51,445],"130":[57,478],"140":[66,531],"150":[77,603],"160":[91,715]},"9500":{"100":[48,428],"110":[50,440],"120":[55,465],"130":[61,501],"140":[70,556],"150":[82,641]},"10000":{"100":[51,447],"110":[54,460],"120":[59,489],"130":[66,531],"140":[75,592],"150":[88,691]},"10500":{"100":[56,470],"110":[59,488],"120":[64,518],"130":[71,564],"140":[82,638]},"11000":{"100":[61,500],"110":[64,518],"120":[70,556],"130":[78,612],"140":[89,700]}},"aeoMaxCont":80.8},"24":{"hp":12000,"oat":-15,"tableA":{"7000":{"-50":149.5,"-40":146.6,"-30":144,"-20":142.2,"-10":140.1,"0":138.9,"10":137.8,"20":137.1,"30":136.1,"40":134.8,"50":133.7},"7500":{"-50":149.6,"-40":147,"-30":144.5,"-20":142.6,"-10":140.4,"0":138.9,"10":137.5,"20":136.4,"30":135.1,"40":133.7,"50":132.7},"8000":{"-50":149.2,"-40":146.8,"-30":144.5,"-20":142.5,"-10":140.2,"0":138.4,"10":136.8,"20":135.3,"30":133.9,"40":132.4,"50":131.4},"8500":{"-50":147.8,"-40":145.7,"-30":143.6,"-20":141.5,"-10":139.3,"0":137.4,"10":135.6,"20":134,"30":132.3,"40":130.8,"50":129.9},"9000":{"-50":145.6,"-40":143.8,"-30":141.9,"-20":139.8,"-10":137.7,"0":135.8,"10":134,"20":132.2,"30":130.6,"40":129.1,"50":128.1},"9500":{"-50":142.1,"-40":140.7,"-30":139,"-20":137.3,"-10":135.4,"0":133.5,"10":131.9,"20":130.2,"30":128.5,"40":127.2,"50":126.2},"10000":{"-50":137.1,"-40":136.1,"-30":134.9,"-20":133.5,"-10":132,"0":130.5,"10":129.1,"20":127.6,"30":126.2,"40":125,"50":124},"10500":{"-50":129.6,"-40":129.6,"-30":129.1,"-20":128.6,"-10":127.6,"0":126.8,"10":125.8,"20":124.7,"30":123.6,"40":122.6,"50":121.6},"11000":{"-50":120,"-40":120,"-30":120,"-20":120,"-10":120,"0":120,"10":120,"20":120,"30":120.6,"40":119.6,"50":119.1}},"tableB":{"7000":{"100":[35,369],"110":[37,382],"120":[41,398],"130":[46,424],"140":[53,460],"150":[62,511],"160":[75,592],"165":[83,650]},"7500":{"100":[37,382],"110":[39,391],"120":[43,408],"130":[48,434],"140":[56,473],"150":[65,530],"160":[78,611],"165":[86,675]},"8000":{"100":[39,393],"110":[42,404],"120":[46,422],"130":[51,448],"140":[59,490],"150":[69,551],"160":[82,645]},"8500":{"100":[42,406],"110":[45,418],"120":[49,436],"130":[54,466],"140":[62,510],"150":[73,579],"160":[86,675]},"9000":{"100":[45,421],"110":[48,432],"120":[52,452],"130":[58,486],"140":[67,538],"150":[78,610]},"9500":{"100":[49,439],"110":[52,451],"120":[56,477],"130":[63,518],"140":[72,570],"150":[84,660]},"10000":{"100":[54,462],"110":[56,478],"120":[61,504],"130":[69,550],"140":[78,616]},"10500":{"100":[59,491],"110":[62,510],"120":[68,545],"130":[76,599],"140":[87,680]},"11000":{"100":[66,531],"110":[69,553],"120":[76,598],"130":[85,665]}},"aeoMaxCont":75.3},"25":{"hp":12000,"oat":0,"tableA":{"7000":{"-50":152,"-40":149.2,"-30":146.3,"-20":144.3,"-10":142.6,"0":141.6,"10":140.4,"20":139.2,"30":138.1,"40":136.3,"50":135},"7500":{"-50":150.8,"-40":148.4,"-30":146.1,"-20":144.1,"-10":142.4,"0":141,"10":139.5,"20":138.3,"30":136.9,"40":135.3,"50":134.1},"8000":{"-50":148.8,"-40":147,"-30":145.2,"-20":143.2,"-10":141.6,"0":139.8,"10":138.2,"20":136.8,"30":135.3,"40":133.8,"50":132.7},"8500":{"-50":145.8,"-40":144.6,"-30":143.3,"-20":141.5,"-10":139.9,"0":137.9,"10":136.2,"20":134.8,"30":133.3,"40":131.8,"50":130.9},"9000":{"-50":141.7,"-40":141,"-30":140.2,"-20":138.5,"-10":137.1,"0":135,"10":133.4,"20":132.1,"30":130.7,"40":129.3,"50":128.5},"9500":{"-50":135.5,"-40":135.5,"-30":135.5,"-20":133.8,"-10":132.8,"0":131,"10":129.6,"20":128.7,"30":127.5,"40":126.4,"50":125.7},"10000":{"-50":126.6,"-40":126.6,"-30":126.6,"-20":127,"-10":126,"0":125.5,"10":124.9,"20":124.4,"30":123.7,"40":122.9,"50":122.4},"10500":{"-50":117,"-40":117,"-30":117,"-20":117,"-10":117,"0":117,"10":117,"20":117,"30":117,"40":117,"50":117},"11000":{"-50":100,"-40":100,"-30":100,"-20":100,"-10":100,"0":100,"10":100,"20":100,"30":100,"40":100,"50":100}},"tableB":{"7000":{"100":[35,374],"110":[37,384],"120":[40,401],"130":[45,426],"140":[52,459],"150":[61,508],"160":[73,582]},"7500":{"100":[37,385],"110":[39,396],"120":[43,413],"130":[48,438],"140":[55,475],"150":[64,529],"160":[77,610]},"8000":{"100":[40,400],"110":[42,410],"120":[46,428],"130":[51,453],"140":[59,495],"150":[68,552],"160":[81,635]},"8500":{"100":[43,415],"110":[45,427],"120":[49,444],"130":[55,473],"140":[63,520],"150":[74,590]},"9000":{"100":[47,432],"110":[49,444],"120":[53,465],"130":[60,500],"140":[68,551],"150":[80,610]},"9500":{"100":[51,453],"110":[54,469],"120":[59,495],"130":[66,535],"140":[75,595],"150":[87,670]},"10000":{"100":[57,484],"110":[59,502],"120":[65,531],"130":[73,582],"140":[83,635]},"10500":{"100":[64,524],"110":[67,547],"120":[73,582],"130":[82,640],"140":[92,675]},"11000":{"100":[73,581],"110":[77,610],"120":[84,650],"130":[90,665]}},"aeoMaxCont":69.5},"26":{"hp":12000,"oat":15,"tableA":{"7000":{"-50":152.1,"-40":150.8,"-30":148.4,"-20":147,"-10":145.5,"0":143.7,"10":142.5,"20":140.9,"30":139,"40":137,"50":135},"7500":{"-50":148.4,"-40":147.8,"-30":146.3,"-20":145,"-10":143.9,"0":142.3,"10":141.1,"20":139.8,"30":138.2,"40":136.4,"50":134.8},"8000":{"-50":144,"-40":144,"-30":143.1,"-20":142.2,"-10":141.4,"0":140,"10":138.9,"20":137.7,"30":136.4,"40":135,"50":133.7},"8500":{"-50":137,"-40":137,"-30":137,"-20":137,"-10":137,"0":136.4,"10":135.4,"20":134.4,"30":133.4,"40":132.4,"50":131.3},"9000":{"-50":131.2,"-40":131.2,"-30":131.2,"-20":131,"-10":131.2,"0":131.2,"10":129.9,"20":129.4,"30":128.7,"40":128,"50":127.2},"9500":{"-50":120,"-40":120,"-30":120,"-20":120,"-10":120,"0":120,"10":120,"20":120,"30":120,"40":120,"50":120},"10000":{"-50":115,"-40":115,"-30":115,"-20":115,"-10":115,"0":115,"10":115,"20":115,"30":115,"40":115,"50":115},"10500":{"-50":90,"-40":90,"-30":90,"-20":90,"-10":90,"0":90,"10":90,"20":90,"30":90,"40":90,"50":90},"11000":{}},"tableB":{"7000":{"100":[34,379],"110":[37,388],"120":[40,405],"130":[45,430],"140":[51,460],"150":[60,511],"160":[72,580]},"7500":{"100":[37,392],"110":[39,401],"120":[43,419],"130":[48,445],"140":[55,480],"150":[64,532],"160":[76,605]},"8000":{"100":[40,407],"110":[42,418],"120":[46,436],"130":[52,461],"140":[59,502],"150":[69,562],"160":[80,630]},"8500":{"100":[44,425],"110":[46,437],"120":[50,456],"130":[56,486],"140":[64,532],"150":[75,602]},"9000":{"100":[48,448],"110":[51,460],"120":[55,481],"130":[62,520],"140":[71,575],"150":[81,635]},"9500":{"100":[54,474],"110":[57,490],"120":[62,519],"130":[70,569],"140":[78,620]},"10000":{"100":[61,515],"110":[64,532],"120":[70,569],"130":[78,620]},"10500":{"100":[71,575],"110":[75,602],"120":[81,635]},"11000":{"100":[80,630]}},"aeoMaxCont":62.5},"27":{"hp":12000,"oat":30,"tableA":{"7000":{"-50":142,"-40":142,"-30":142,"-20":142,"-10":142,"0":142,"10":142,"20":141,"30":139,"40":137,"50":134},"7500":{"-50":137.2,"-40":137.2,"-30":137.2,"-20":137.2,"-10":137.2,"0":137.2,"10":137.2,"20":137.2,"30":136.4,"40":135.3,"50":134.1},"8000":{"-50":131,"-40":131,"-30":131,"-20":131,"-10":131,"0":131,"10":131,"20":131,"30":131,"40":131,"50":131},"8500":{"-50":120,"-40":120,"-30":120,"-20":120,"-10":120,"0":120,"10":120,"20":120,"30":120,"40":120,"50":120},"9000":{"-50":112,"-40":112,"-30":112,"-20":112,"-10":112,"0":112,"10":112,"20":112,"30":112,"40":112,"50":112},"9500":{"-50":90,"-40":90,"-30":90,"-20":90,"-10":90,"0":90,"10":90,"20":90,"30":90,"40":90,"50":90},"10000":{},"10500":{},"11000":{}},"tableB":{"7000":{"100":[35,382],"110":[37,394],"120":[40,410],"130":[45,435],"140":[51,465],"150":[60,515]},"7500":{"100":[38,399],"110":[40,410],"120":[43,425],"130":[48,455],"140":[55,485],"150":[65,542]},"8000":{"100":[41,416],"110":[43,428],"120":[47,446],"130":[53,474],"140":[60,515],"150":[69,570]},"8500":{"100":[45,438],"110":[48,452],"120":[52,472],"130":[58,502],"140":[67,555],"150":[74,590]},"9000":{"100":[51,466],"110":[54,480],"120":[59,508],"130":[66,548],"140":[74,590]},"9500":{"100":[58,501],"110":[61,518],"120":[67,555],"130":[73,585]},"10000":{"100":[67,555],"110":[71,575],"120":[74,590]},"10500":{},"11000":{}},"aeoMaxCont":53}};
+
+const HP_LEVELS = [0,3000,6000,9000,12000];
+const WEIGHTS = [7000,7500,8000,8500,9000,9500,10000,10500,11000];
+const WINDS = [-50,-40,-30,-20,-10,0,10,20,30,40,50];
+const KG_TO_LB = 2.20462;
+
+function hpOats(hp){
+  const s = new Set();
+  for (const n in FIGURES){ if (FIGURES[n].hp===hp) s.add(FIGURES[n].oat); }
+  return Array.from(s).sort((a,b)=>a-b);
+}
+function figFor(hp, oat){
+  for (const n in FIGURES){ const f=FIGURES[n]; if (f.hp===hp && f.oat===oat) return f; }
+  return null;
+}
+// STRICT bracket: no extrapolation outside published range -> returns null if out of range
+function bracket(val, options){
+  const opts = [...options].sort((a,b)=>a-b);
+  if (val < opts[0] || val > opts[opts.length-1]) return null;
+  for (const o of opts){
+    if (val === o) return {lo:o, hi:o, frac:0};
+  }
+  for (let i=0;i<opts.length-1;i++){
+    if (opts[i] <= val && val <= opts[i+1]){
+      const lo=opts[i], hi=opts[i+1];
+      const frac = hi===lo ? 0 : (val-lo)/(hi-lo);
+      return {lo,hi,frac};
+    }
+  }
+  return null;
+}
+function bilerpTable(table, rowVal, rowKeys, colVal, colKeys, getFn){
+  const rb = bracket(rowVal, rowKeys);
+  if (!rb) return null;
+  function valAtRow(wt){
+    const row = table[String(wt)];
+    if (!row) return null;
+    const rowCols = Object.keys(row).map(Number).sort((a,b)=>a-b);
+    const cb = bracket(colVal, rowCols);
+    if (!cb) return null;
+    const vLo = getFn(table, wt, cb.lo), vHi = getFn(table, wt, cb.hi);
+    if (vLo===null||vLo===undefined||vHi===null||vHi===undefined) return null;
+    return vLo + (vHi-vLo)*cb.frac;
+  }
+  const vLoRow = valAtRow(rb.lo), vHiRow = valAtRow(rb.hi);
+  if (vLoRow===null||vHiRow===null) return null;
+  return vLoRow + (vHiRow-vLoRow)*rb.frac;
+}
+function getTableA(table, wt, wind){
+  const row = table[String(wt)]; if (!row) return null;
+  const v = row[String(wind)]; return (v===undefined)?null:v;
+}
+function getTableBComp(table, wt, tas, idx){
+  const row = table[String(wt)]; if (!row) return null;
+  const v = row[String(tas)]; if (!v) return null;
+  return v[idx];
+}
+function tasColsOf(fig){
+  const s = new Set();
+  for (const wt in fig.tableB){ for (const t in fig.tableB[wt]) s.add(parseInt(t)); }
+  return Array.from(s).sort((a,b)=>a-b);
+}
+
+function lookupTAS(hp, oat, weight, wind){
+  const hb = bracket(hp, HP_LEVELS); if (!hb) return null;
+  function atHp(hpVal){
+    const oats = hpOats(hpVal);
+    const ob = bracket(oat, oats); if (!ob) return null;
+    const fLo = figFor(hpVal, ob.lo), fHi = figFor(hpVal, ob.hi);
+    const vLo = bilerpTable(fLo.tableA, weight, WEIGHTS, wind, WINDS, getTableA);
+    const vHi = bilerpTable(fHi.tableA, weight, WEIGHTS, wind, WINDS, getTableA);
+    if (vLo===null||vHi===null) return null;
+    return vLo + (vHi-vLo)*ob.frac;
+  }
+  const vLo = atHp(hb.lo), vHi = atHp(hb.hi);
+  if (vLo===null||vHi===null) return null;
+  return vLo + (vHi-vLo)*hb.frac;
+}
+
+function lookupTorqueFuel(hp, oat, weight, tas){
+  const hb = bracket(hp, HP_LEVELS); if (!hb) return [null,null];
+  function atHp(hpVal){
+    const oats = hpOats(hpVal);
+    const ob = bracket(oat, oats); if (!ob) return [null,null];
+    const fLo = figFor(hpVal, ob.lo), fHi = figFor(hpVal, ob.hi);
+    const tqLo = bilerpTable(fLo.tableB, weight, WEIGHTS, tas, tasColsOf(fLo), (t,w,c)=>getTableBComp(t,w,c,0));
+    const fuLo = bilerpTable(fLo.tableB, weight, WEIGHTS, tas, tasColsOf(fLo), (t,w,c)=>getTableBComp(t,w,c,1));
+    const tqHi = bilerpTable(fHi.tableB, weight, WEIGHTS, tas, tasColsOf(fHi), (t,w,c)=>getTableBComp(t,w,c,0));
+    const fuHi = bilerpTable(fHi.tableB, weight, WEIGHTS, tas, tasColsOf(fHi), (t,w,c)=>getTableBComp(t,w,c,1));
+    if ([tqLo,fuLo,tqHi,fuHi].some(v=>v===null)) return [null,null];
+    return [tqLo+(tqHi-tqLo)*ob.frac, fuLo+(fuHi-fuLo)*ob.frac];
+  }
+  const [tqLo,fuLo] = atHp(hb.lo), [tqHi,fuHi] = atHp(hb.hi);
+  if (tqLo===null||tqHi===null) return [null,null];
+  return [tqLo+(tqHi-tqLo)*hb.frac, fuLo+(fuHi-fuLo)*hb.frac];
+}
+
+// Table B's charted TAS columns don't extend as far at heavy weight / hot OAT /
+// high altitude as they do at lighter, cooler, lower conditions -- the torque
+// limit is reached before the chart bothers publishing a higher-TAS column.
+// This means Table A (economic cruise speed) can recommend a TAS that Table B
+// has no torque/fuel data for at the SAME hp/OAT/weight -- a real limitation
+// of the aircraft at that corner of the envelope, not a gap in the data.
+// Rather than halt the mission outright when that happens, find the highest
+// TAS Table B actually supports there and use that instead, flagging it so
+// the burn-down table shows where and why the cap kicked in.
+function maxChartedTasFor(hp, oat, weight, requestedTas){
+  if (lookupTorqueFuel(hp, oat, weight, requestedTas)[1] !== null) return requestedTas; // no cap needed
+  let lo = 0, hi = requestedTas;
+  // requestedTas itself already failed; walk downward in whole knots to find
+  // the highest TAS that still resolves. Table B's published columns are in
+  // 10kt steps, so scanning by 1kt will always land on (or just above) a
+  // resolvable interpolated point once we're inside the charted range.
+  for (let t = Math.floor(requestedTas) - 1; t >= 0; t--){
+    if (lookupTorqueFuel(hp, oat, weight, t)[1] !== null) return t;
+  }
+  return null; // nothing resolves at any TAS down to 0 -- genuinely outside the envelope
+}
+
+// Same per-figure AEO Max Continuous torque values used by ec225-cruise-torque
+// (RFM Section 10.2.A1 para 1.6), interpolated the same way as everything else.
+function lookupAeoMax(hp, oat){
+  const hb = bracket(hp, HP_LEVELS); if (!hb) return null;
+  function atHp(hpVal){
+    const oats = hpOats(hpVal);
+    const ob = bracket(oat, oats); if (!ob) return null;
+    const fLo = figFor(hpVal, ob.lo), fHi = figFor(hpVal, ob.hi);
+    const vLo = fLo.aeoMaxCont, vHi = fHi.aeoMaxCont;
+    if (vLo===null||vHi===null||vLo===undefined||vHi===undefined) return null;
+    return vLo + (vHi-vLo)*ob.frac;
+  }
+  const vLo = atHp(hb.lo), vHi = atHp(hb.hi);
+  if (vLo===null||vHi===null) return null;
+  return vLo + (vHi-vLo)*hb.frac;
+}
+
+// FCOM Section 1.1, Twin-Engine Level Flight: "The maximum range power setting
+// is obtained at approximately MCP minus 0.5 FLI" -- i.e. best-range cruise
+// should sit a small margin below Max Continuous Power, not right against it.
+// Greg specified 1% torque as the practical value for that 0.5 FLI margin
+// (updated 2026-07-24 from an initial 2%; same constant shared with
+// ec225-cruise-torque). Table A's charted best-range TAS doesn't know about
+// this margin -- it can recommend a TAS whose torque lands right at (or
+// above) MCP. Rather than touch Table A itself, this steps DOWN from whatever
+// TAS was already chosen (post chart-max-cap) until torque clears
+// MCP - MCP_MARGIN, using the same column-by-column search as
+// maxChartedTasFor(). Only engages when needed -- most missions have torque
+// comfortably below MCP already and this returns the TAS unchanged.
+// CRUISE margin is now selectable (2026-07-27, Greg's proposal):
+//   - box UNCHECKED -> 0%: cruise may run right up to AEO Max Continuous.
+//     Table A's recommended TAS is still capped so torque never EXCEEDS MCP,
+//     but no additional operational margin is held back.
+//   - box CHECKED (default) -> 7%: always plan 7% torque below AEO Max
+//     Continuous, per FCOM. This is an operational power margin, not a
+//     chart-envelope limit, and it only bites where torque was already near
+//     MCP (heavy/hot/high) -- there it can cost a full Table B column of TAS.
+// The CLIMB segment deliberately keeps its own fixed 1% (MCP_MARGIN_PCT)
+// -- Greg's instruction, so the already-validated climb model is not
+// disturbed by a cruise-planning choice.
+const CRUISE_MARGIN_AEO_PCT = 0;  // unchecked: sit at MCP exactly
+const CRUISE_MARGIN_FCOM_PCT = 7; // checked: FCOM operational margin
+function cruiseMarginPct(){
+  const el = document.getElementById('fcop-margin');
+  // default to the conservative FCOM margin if the control isn't present
+  return (el && !el.checked) ? CRUISE_MARGIN_AEO_PCT : CRUISE_MARGIN_FCOM_PCT;
+}
+const MCP_MARGIN_PCT = 1; // ~0.5 FLI per Greg, FCOM 1.1 -- CLIMB segment only
+// Returns { tas, marginLost } -- marginLost is true when the selected FCOM
+// margin could not be achieved at ANY charted TAS and we fell back to the
+// plain AEO Max Continuous limit instead. Greg's call (2026-07-27): at the
+// heavy/hot/high points where 7% below MCP is unreachable, give a usable
+// number at MCP and flag the row, rather than halting the whole burn-down --
+// those are exactly the cases where a plan is most wanted. tas === null only
+// if even MCP itself can't be met, which is a genuine envelope failure.
+function marginSafeTasFor(hp, oat, weight, tas){
+  const aeoMax = lookupAeoMax(hp, oat);
+  if (aeoMax === null) return { tas: tas, marginLost: false }; // no MCP data -- can't check, leave as-is
+  const margin = cruiseMarginPct();
+  const search = (target) => {
+    const [torque] = lookupTorqueFuel(hp, oat, weight, tas);
+    if (torque === null || torque <= target) return tas; // already clear
+    for (let t = Math.floor(tas) - 1; t >= 0; t--){
+      const [tq, fu] = lookupTorqueFuel(hp, oat, weight, t);
+      if (fu === null) continue;
+      if (tq <= target) return t;
+    }
+    return null;
+  };
+  const withMargin = search(aeoMax - margin);
+  if (withMargin !== null) return { tas: withMargin, marginLost: false };
+  if (margin === 0) return { tas: null, marginLost: false }; // already at MCP; genuine envelope failure
+  const atMcp = search(aeoMax); // fall back to the certified limit
+  return { tas: atMcp, marginLost: atMcp !== null };
+}
+
+// Table A occasionally has NO data at all for a queried weight/Hp/OAT -- not
+// just a slow-TAS chart-max limit, but a genuine hole where the underlying
+// chart runs off its own plotted edge (e.g. 11,000 kg at Hp 9,000/OAT 30C,
+// found 2026-07-24 -- Greg confirmed that weight is too far off Fig n/1's
+// chart to trace a best-range TAS at all, even though Fig n/2 (Table B) still
+// has real torque/fuel data at that weight for a few lower TAS values).
+// Rather than halt the mission outright, fall back to Table B directly: pick
+// the fastest charted TAS whose torque is still at least MCP_MARGIN_PCT below
+// AEO Max Continuous. This is NOT the book's "best-range" recommendation
+// (Table A never gets consulted here) -- it's a "fastest sustainable"
+// fallback for the narrow case where Table A itself has nothing to offer.
+// Only used when lookupTAS() returns null; every other step still goes
+// through Table A as normal.
+function tasFromTableBDirect(hp, oat, weight, marginOverride){
+  const aeoMax = lookupAeoMax(hp, oat);
+  if (aeoMax === null) return null; // no MCP data either -- nothing to fall back on
+  const target = aeoMax - (marginOverride === undefined ? cruiseMarginPct() : marginOverride);
+  for (let t = 200; t >= 0; t--){
+    const [tq, fu] = lookupTorqueFuel(hp, oat, weight, t);
+    if (fu === null) continue;
+    if (tq <= target) return t;
+  }
+  return null; // Table B has data here but every charted TAS exceeds the margin
+}
+
+// Vy = 80 kt TAS at sea level, minus 1 kt per 1000 ft of pressure altitude (RFM Section 2, Vy definition)
+function vyAt(hp){ return 80 - (hp/1000); }
+
+function equipCorrectionPct(hoist, tanks){
+  let pct = 0;
+  if (hoist) pct += 3;
+  if (tanks) pct += 3;
+  return pct;
+}
+
+// Weight field sync: kg <-> lb, keeping both visible and in lockstep
+function wtKgToLb(kg){ return kg * KG_TO_LB; }
+function wtLbToKg(lb){ return lb / KG_TO_LB; }
+
+function syncWeightFromKg(prefix){
+  const kgEl = document.getElementById(prefix+'-kg');
+  const lbEl = document.getElementById(prefix+'-lb');
+  const kg = parseFloat(kgEl.value)||0;
+  lbEl.value = Math.round(wtKgToLb(kg));
+}
+function syncWeightFromLb(prefix){
+  const kgEl = document.getElementById(prefix+'-kg');
+  const lbEl = document.getElementById(prefix+'-lb');
+  const lb = parseFloat(lbEl.value)||0;
+  kgEl.value = Math.round(wtLbToKg(lb));
+}
+function stepWeightKg(prefix, delta){
+  const kgEl = document.getElementById(prefix+'-kg');
+  kgEl.value = (parseFloat(kgEl.value)||0) + delta;
+  syncWeightFromKg(prefix);
+}
+function stepWeightLb(prefix, delta){
+  const lbEl = document.getElementById(prefix+'-lb');
+  lbEl.value = (parseFloat(lbEl.value)||0) + delta;
+  syncWeightFromLb(prefix);
+}
+function syncFuelFromKg(prefix){
+  const kgEl = document.getElementById(prefix+'-kg');
+  const lbEl = document.getElementById(prefix+'-lb');
+  const kg = parseFloat(kgEl.value)||0;
+  lbEl.value = Math.round(wtKgToLb(kg));
+}
+function syncFuelFromLb(prefix){
+  const kgEl = document.getElementById(prefix+'-kg');
+  const lbEl = document.getElementById(prefix+'-lb');
+  const lb = parseFloat(lbEl.value)||0;
+  kgEl.value = Math.round(wtLbToKg(lb));
+}
+function stepFuelKg(prefix, delta){
+  const kgEl = document.getElementById(prefix+'-kg');
+  kgEl.value = (parseFloat(kgEl.value)||0) + delta;
+  syncFuelFromKg(prefix);
+}
+function stepFuelLb(prefix, delta){
+  const lbEl = document.getElementById(prefix+'-lb');
+  lbEl.value = (parseFloat(lbEl.value)||0) + delta;
+  syncFuelFromLb(prefix);
+}
+
+// Total Takeoff Weight = Zero Fuel Weight + Fuel on Board. Purely a display +
+// the value actually fed into the mission engine -- there is no separate
+// "takeoff weight" field for the pilot to fill in inconsistently with the
+// fuel figure; this is the one number the rest of the tool uses.
+function updateTotalWeight(){
+  const zfwKg = parseFloat(document.getElementById('zfw-kg').value) || 0;
+  const fuelKg = parseFloat(document.getElementById('fuel-kg').value) || 0;
+  const totalKg = zfwKg + fuelKg;
+  const totalLb = totalKg * KG_TO_LB;
+  document.getElementById('total-wt-display').innerHTML =
+    Math.round(totalLb).toLocaleString() + ' lb <span style="color:#6b7280;font-weight:400;">/ ' + Math.round(totalKg).toLocaleString() + ' kg</span>';
+  return totalKg;
+}
+
+// --- Mission burn-down loop ---------------------------------------------
+// Runs 15-minute (0.25 hr) steps: at each step, look up TAS+fuel flow at the
+// CURRENT (burned-down) weight, apply wind to get ground speed, then advance
+// distance covered / fuel burned for that interval. Stops when destination is
+// reached OR fuel remaining hits the reserve threshold, whichever first.
+// Every lookup uses the exact same strict bilinear interpolation as
+// ec225-cruise-torque -- a null result (point outside the charted envelope)
+// halts the simulation immediately rather than guessing.
+// --- Climb segment -------------------------------------------------------
+// Deliberately NOT a modeled climb profile (no rate-of-climb chart, no
+// changing airspeed/fuel flow through the climb) -- that was the earlier
+// beta attempt (Fig 9 Weight Index + Fig 11b R/C at Vy) and Greg found it too
+// complex for what he actually needed. This version treats the whole climb
+// as one representative average segment:
+//   - Climb altitude gap = cruise Hp minus departure field elevation.
+//   - Climb TAS = cruise Table A best-range TAS (at cruise Hp/OAT/departure
+//     weight/wind), reduced by a percentage that scales LINEARLY with the
+//     selected rate of climb: 10% off at 500 ft/min, up to 30% off at
+//     1,500 ft/min. (500->10%, 1000->20%, 1500->30%, straight line between.)
+//   - Midpoint altitude/OAT = halfway (by altitude) between the departure
+//     field and cruise altitude, OAT linearly interpolated between departure
+//     OAT (at field elevation) and cruise OAT (at cruise altitude) the same
+//     way -- there's no full atmospheric model here, just a straight-line
+//     interpolation between the two known points.
+//   - Fuel flow for the whole climb segment is looked up ONCE, from Table B,
+//     at that midpoint Hp/OAT, departure weight (unchanged for the whole
+//     climb, same simplification the rest of this tool already makes for
+//     each 15-minute step), and the climb TAS computed above.
+//   - Climb time = altitude gap / ROC. Climb distance = climb TAS (or GS, if
+//     wind is entered) x climb time. Climb fuel = fuel flow x climb time.
+// Returns null if either the cruise TAS lookup or the midpoint fuel-flow
+// lookup falls outside the charted envelope -- same "fail honestly, don't
+// guess" policy as the rest of the tool.
+function climbTasReductionPct(roc){
+  // Linear: 10% at 500 ft/min, 30% at 1500 ft/min. Clamp inputs outside the
+  // supported window to the nearest end rather than extrapolating further.
+  const r = Math.max(500, Math.min(1500, roc));
+  return 10 + (r - 500) * (30 - 10) / (1500 - 500);
+}
+
+// Table B is built entirely from level-flight (cruise) data -- every
+// torque/fuel-flow pair in it answers "if the aircraft were in steady level
+// flight at this weight and this TAS, what's the burn?" During an actual
+// climb, a chunk of engine power goes into gaining altitude rather than
+// forward speed, so looking up fuel flow at the (slower) climb TAS as if it
+// were a level-flight cruise speed understates the real fuel burn -- Greg
+// caught this directly ("I would not use the indicated air speed for the
+// fuel burn... the fuel burn that you have indicated would be if the
+// aircraft was in a level flight profile"). His fix: assume the aircraft is
+// working near its climb power limit instead -- 1% below AEO Max Continuous
+// (same MCP_MARGIN_PCT already used elsewhere in this tool) -- and use
+// WHATEVER TAS/fuel-flow pair Table B has at that torque, rather than the
+// TAS the sliding-scale reduction produced. That reduced TAS still drives
+// the climb TIME/DISTANCE shown in the table (Greg's instruction: "the true
+// airspeed reduction would only be for the table to show the time to climb
+// ... but the fuel burn would be the 1% minus"), so the displayed climb TAS
+// and the TAS actually used for the fuel lookup are allowed to diverge.
+// Table B's torque column is monotonically increasing with TAS (more speed
+// costs more power), so walking TAS upward from 0 and taking the last point
+// that still clears the target torque finds the fastest -- i.e. most
+// torque-decisive -- climb condition at that margin.
+function climbFuelAtTargetTorque(hp, oat, weight){
+  const aeoMax = lookupAeoMax(hp, oat);
+  if (aeoMax === null) return null;
+  // CLIMB deliberately stays at the fixed 1% regardless of the cruise
+  // FCOM-margin checkbox -- per Greg, so the validated climb model is
+  // unaffected by a cruise-planning choice.
+  const target = aeoMax - MCP_MARGIN_PCT;
+  let best = null;
+  for (let t = 0; t <= 200; t++){
+    const [tq, fu] = lookupTorqueFuel(hp, oat, weight, t);
+    if (fu === null) continue;
+    if (tq <= target) best = { tas: t, torque: tq, fuelFlowKgH: fu };
+    else break; // torque only increases with TAS -- first miss ends the search
+  }
+  return best; // null if not even the slowest charted TAS clears the margin
+}
+
+function computeClimbSegment(params){
+  const {
+    hp, oat, wind, depElevFt, depOatC, roc,
+    startWeightKg, startFuelKg, distanceNm
+  } = params;
+
+  const climbGapFt = hp - depElevFt;
+  if (climbGapFt <= 0){
+    // Cruise altitude at or below field elevation -- no climb segment needed.
+    return { skip: true };
+  }
+
+  // Cruise best-range TAS at departure weight -- the baseline the climb
+  // speed reduction is applied against, per Greg's instruction to reuse the
+  // existing Table A lookup rather than add a new one. This drives the
+  // DISPLAYED climb TAS and therefore climb time/distance only -- see
+  // climbFuelAtTargetTorque() above for why fuel burn is computed
+  // separately, from torque, not from this reduced TAS.
+  const cruiseTas = lookupTAS(hp, oat, startWeightKg, wind);
+  if (cruiseTas === null) return { error: 'cruise-tas' };
+
+  const reductionPct = climbTasReductionPct(roc);
+  const climbTas = cruiseTas * (1 - reductionPct/100);
+
+  // Midpoint altitude/OAT for the fuel-flow lookup -- straight-line halfway
+  // point between the two known ends (field elevation/OAT and cruise
+  // Hp/OAT), not a modeled lapse rate.
+  const midHp = (depElevFt + hp) / 2;
+  const midOat = (depOatC + oat) / 2;
+
+  const climbPower = climbFuelAtTargetTorque(midHp, midOat, startWeightKg);
+  if (climbPower === null) return { error: 'midpoint-fuel' };
+  const { torque, fuelFlowKgH } = climbPower;
+
+  const climbTimeHr = climbGapFt / roc / 60; // roc in ft/min -> hours
+  const climbTimeMin = climbTimeHr * 60;
+  const climbGs = climbTas + wind;
+  const climbDistNm = climbGs * climbTimeHr;
+  const climbFuelKg = fuelFlowKgH * climbTimeHr;
+
+  return {
+    skip: false, error: null,
+    climbGapFt, cruiseTas, reductionPct, climbTas: Math.round(climbTas),
+    midHp, midOat, torque, fuelFlowKgH, climbPowerTas: climbPower.tas,
+    climbTimeMin, climbGs: Math.round(climbGs), climbDistNm, climbFuelKg
+  };
+}
+
+function runMission(params){
+  const {
+    hp, oat, wind, distanceNm, startWeightKg, startFuelKg,
+    reserveMinutes, maxGwtKg, hoist, tanks,
+    depElevFt, depOatC, roc, legs
+  } = params;
+
+  const STEP_HR = 0.25; // 15 minutes -- used when no route is loaded
+
+  // When a ForeFlight route has been imported, steps are bounded by the
+  // WAYPOINTS rather than a fixed clock: each row lands on a fix you actually
+  // cross, which is far more useful to compare against in flight. `legs` is a
+  // list of {id, distNm} measured from the previous fix.
+  //
+  // One row per waypoint, always -- no automatic subdivision of long legs
+  // (Greg, 2026-09-01: the nav log should mirror the flight plan exactly; a
+  // pilot who wants finer granularity adds the fix in ForeFlight and
+  // re-imports, rather than the app inventing points that aren't in the
+  // plan). Everything else in this loop -- Table A/B lookups, the MCP margin,
+  // equipment correction, reserve logic -- is unchanged; only the LENGTH of
+  // each step and its label differ.
+  const usingLegs = Array.isArray(legs) && legs.length > 0;
+  // Working queue of remaining leg distances; consumed as the mission runs.
+  const legQueue = usingLegs ? legs.map(function(l){ return { id: l.id, remain: l.distNm, total: l.distNm }; }) : [];
+  const rows = [];
+  let weightKg = startWeightKg;
+  let fuelKg = startFuelKg;
+  let distRemaining = distanceNm;
+  let elapsedMin = 0;
+
+  const overMax = (maxGwtKg && startWeightKg > maxGwtKg);
+  const equipPct = equipCorrectionPct(hoist, tanks);
+  const vy = vyAt(hp);
+
+  // Row 0: takeoff point
+  rows.push({
+    t: 0, weightKg, fuelKg, distRemaining,
+    tas: null, fuelFlowKgH: null, gs: null, note: 'Takeoff', flagKind: null
+  });
+
+  let stopReason = null;
+  const MAX_STEPS = 4 * 24; // safety cap: 24 hours of endurance, way beyond any realistic mission
+  let reserveKg = null;
+
+  // --- Climb segment ----------------------------------------------------
+  // Inserted as its own row ahead of the 15-minute cruise steps, using the
+  // simplified average-climb approach in computeClimbSegment() above. If the
+  // climb segment can't be computed (cruise TAS or midpoint fuel flow falls
+  // outside the charted envelope), the whole mission stops here rather than
+  // silently skipping the climb -- same honest-failure policy as every other
+  // lookup in this tool. If cruise altitude is at or below field elevation,
+  // the climb segment is skipped entirely (no climb needed) and the mission
+  // proceeds straight into the normal 15-minute loop, unchanged from
+  // production behavior.
+  let climbInfo = null;
+  if (typeof depElevFt === 'number' && !isNaN(depElevFt)){
+    const climb = computeClimbSegment({
+      hp, oat, wind, depElevFt, depOatC, roc,
+      startWeightKg: weightKg, startFuelKg: fuelKg, distanceNm: distRemaining
+    });
+    if (climb.error){
+      stopReason = climb.error === 'cruise-tas' ? 'climb-envelope' : 'climb-envelope';
+      return { rows, stopReason, overMax, reserveKg, climbInfo: null };
+    }
+    if (!climb.skip){
+      climbInfo = climb;
+      const distThisClimb = climb.climbDistNm;
+      if (distThisClimb >= distRemaining){
+        // Destination reached during the climb itself -- prorate.
+        const frac = distRemaining / distThisClimb;
+        const partFuel = climb.climbFuelKg * frac;
+        const partMin = climb.climbTimeMin * frac;
+        weightKg -= partFuel;
+        fuelKg -= partFuel;
+        elapsedMin += partMin;
+        distRemaining = 0;
+        rows.push({
+          t: elapsedMin, weightKg, fuelKg, distRemaining,
+          tas: climb.climbTas, fuelFlowKgH: climb.fuelFlowKgH, gs: climb.climbGs,
+          note: 'Destination', flagKind: null, isClimb: true
+        });
+        return { rows, stopReason: 'arrived', overMax, reserveKg, climbInfo };
+      }
+      weightKg -= climb.climbFuelKg;
+      fuelKg -= climb.climbFuelKg;
+      elapsedMin += climb.climbTimeMin;
+      distRemaining -= distThisClimb;
+      // Keep the leg queue aligned with distance actually flown during climb.
+      let climbEat = distThisClimb;
+      while (usingLegs && climbEat > 0 && legQueue.length){
+        if (legQueue[0].remain > climbEat){ legQueue[0].remain -= climbEat; climbEat = 0; }
+        else { climbEat -= legQueue[0].remain; legQueue.shift(); }
+      }
+      rows.push({
+        t: elapsedMin, weightKg, fuelKg, distRemaining,
+        tas: climb.climbTas, fuelFlowKgH: climb.fuelFlowKgH, gs: climb.climbGs,
+        note: 'Top of Climb', flagKind: null, isClimb: true
+      });
+    }
+  }
+
+  for (let step = 0; step < MAX_STEPS; step++){
+    // Table A gives the RFM's recommended best-range TAS for this weight/wind
+    // -- it adjusts the recommended AIRSPEED slightly to fly faster into a
+    // headwind or slower with a tailwind for best range, but the number it
+    // returns is still true airspeed through the air, not ground speed. Wind
+    // has NOT been subtracted/added yet at this point. Torque/fuel are looked
+    // up against this same TAS, per the book's own Fig n/2 method (weight +
+    // this TAS -> torque/fuel), since those depend on airspeed through the
+    // air, not speed over the ground.
+    const tasChart = lookupTAS(hp, oat, weightKg, wind);
+    // Table A occasionally has NO data at all at this weight/Hp/OAT -- the
+    // chart itself runs off its own plotted edge (e.g. 11,000 kg at Hp
+    // 9,000/OAT 30C, found 2026-07-24 -- Greg confirmed that weight is too
+    // far off Fig n/1's chart to trace a best-range TAS at all). Rather than
+    // halt the mission there, fall back to Table B directly: fastest charted
+    // TAS whose torque still clears the MCP margin. This is NOT the book's
+    // best-range recommendation (Table A never consulted for this step) --
+    // it's a "fastest sustainable" fallback, flagged on the row as such.
+    let tasUsed, torque, fuelFlowKgH, tasCapped = false, tableADirect = false;
+    if (tasChart === null){
+      let directTas = tasFromTableBDirect(hp, oat, weightKg);
+      if (directTas === null && cruiseMarginPct() > 0){
+        // FCOM margin unreachable on this fallback too -- retry at plain MCP
+        // and flag, rather than halting (same policy as marginSafeTasFor).
+        directTas = tasFromTableBDirect(hp, oat, weightKg, 0);
+        if (directTas !== null) marginLost = true;
+      }
+      if (directTas === null){
+        stopReason = 'envelope';
+        break;
+      }
+      tasUsed = directTas;
+      [torque, fuelFlowKgH] = lookupTorqueFuel(hp, oat, weightKg, tasUsed);
+      if (fuelFlowKgH === null){
+        stopReason = 'envelope';
+        break;
+      }
+      tableADirect = true;
+    } else {
+      // Table A (economic cruise TAS) can recommend a speed Table B has no
+      // torque/fuel data for at this same hp/OAT/weight -- heavy + hot + high
+      // reaches the torque limit before the chart's higher-TAS columns even
+      // exist. Rather than fail the whole mission there, cap at the fastest
+      // TAS Table B actually supports at this point and flag it on the row.
+      tasUsed = Math.round(tasChart);
+      [torque, fuelFlowKgH] = lookupTorqueFuel(hp, oat, weightKg, tasUsed);
+      if (fuelFlowKgH === null){
+        const capped = maxChartedTasFor(hp, oat, weightKg, tasUsed);
+        if (capped === null){
+          stopReason = 'envelope';
+          break;
+        }
+        tasUsed = capped;
+        [torque, fuelFlowKgH] = lookupTorqueFuel(hp, oat, weightKg, tasUsed);
+        if (fuelFlowKgH === null){
+          stopReason = 'envelope';
+          break;
+        }
+        tasCapped = true;
+      }
+    }
+    // FCOM 1.1: best-range power should sit ~0.5 FLI (~1% torque, per Greg)
+    // below MCP, not right against it. If the chart-recommended TAS (already
+    // adjusted above for Table B's own chart-max limit) still produces a
+    // torque within that margin of MCP, step down to the next slower charted
+    // TAS until clear. Runs AFTER the chart-max cap so the two never fight
+    // each other -- whichever constraint is more restrictive wins. Skipped
+    // when tableADirect is true -- tasFromTableBDirect() already picked the
+    // fastest TAS clearing this exact margin, so re-checking is redundant.
+    let mcpCapped = false, marginLost = false;
+    if (!tableADirect){
+      const marginRes = marginSafeTasFor(hp, oat, weightKg, tasUsed);
+      const marginTas = marginRes.tas;
+      if (marginTas === null){
+        stopReason = 'envelope';
+        break;
+      }
+      if (marginRes.marginLost) marginLost = true;
+      if (marginTas !== tasUsed){
+        tasUsed = marginTas;
+        [torque, fuelFlowKgH] = lookupTorqueFuel(hp, oat, weightKg, tasUsed);
+        if (fuelFlowKgH === null){
+          stopReason = 'envelope';
+          break;
+        }
+        mcpCapped = true;
+      }
+    }
+    // Optional-equipment correction applies only to the achieved airspeed
+    // (torque and fuel are unaffected, same reasoning as ec225-cruise-torque),
+    // and only when TAS >= Vy. equipTas is what the pilot would actually see
+    // on the ASI with hoist/EFT installed -- displayed as the row's TAS, and
+    // also what wind is added to below to get ground speed. Previously the
+    // displayed TAS column showed the raw chart value (no equipment penalty)
+    // while GS silently included it -- so unchecking EFT looked like it did
+    // nothing to TAS, and the TAS/GS gap only ever seemed to reflect wind.
+    // Wind is added on top of equipTas (headwind entered as negative,
+    // tailwind positive) to get the actual ground speed used for the
+    // distance-covered math.
+    const equipTas = (equipPct > 0 && tasUsed >= vy) ? tasUsed * (1 - equipPct/100) : tasUsed;
+    const gs = equipTas + wind;
+    if (gs <= 0){
+      stopReason = 'nogs';
+      break;
+    }
+
+    // Reserve threshold in kg, computed once we know a fuel flow to convert
+    // the reserve TIME into a fuel WEIGHT at the current burn rate.
+    if (reserveKg === null){
+      reserveKg = fuelFlowKgH * (reserveMinutes / 60);
+    }
+
+    // tasCapped (chart-max cap) intentionally adds no row flag -- Greg asked
+    // to stop surfacing that one in the burn-down table; the cap itself still
+    // runs exactly as before, only the label is gone. mcpCapped and
+    // tableADirect DO get flagged, but rather than spelling the reason out on
+    // every row (cluttering the table), flagged rows just get a small
+    // asterisk next to the time -- the actual explanation is shown once, in a
+    // footnote below the table (added 2026-07-24, per Greg's request).
+    // flagKind distinguishes the two reasons so the footnote can mention
+    // whichever ones actually occurred in this mission (tableADirect implies
+    // mcpCapped is moot for that row, so at most one applies per row).
+    const flagKind = marginLost ? 'marginlost' : (tableADirect ? 'direct' : (mcpCapped ? 'mcp' : null));
+
+    // --- how long is this step, and what do we call it? ---------------
+    // No route loaded: fixed 15-minute steps, exactly as before.
+    // Route loaded: run the whole leg to the next waypoint, however long.
+    let stepHr = STEP_HR;
+    let stepLabel = '';
+    let reachedFix = null;
+    if (usingLegs && legQueue.length){
+      const leg = legQueue[0];
+      stepHr = leg.remain / gs;   // run the whole leg, however long it is
+      reachedFix = leg.id;
+      stepLabel = leg.id;
+    }
+
+    const distThisStep = gs * stepHr;
+    const fuelThisStep = fuelFlowKgH * stepHr;
+
+    if (distThisStep >= distRemaining){
+      // Arrive at destination partway through this step -- prorate the step.
+      const frac = distRemaining / distThisStep;
+      const partFuel = fuelThisStep * frac;
+      const partMin = stepHr * 60 * frac;
+      weightKg -= partFuel;
+      fuelKg -= partFuel;
+      elapsedMin += partMin;
+      distRemaining = 0;
+      rows.push({
+        t: elapsedMin, weightKg, fuelKg, distRemaining,
+        tas: Math.round(equipTas), fuelFlowKgH, gs: Math.round(gs),
+        note: 'Destination', flagKind
+      });
+      stopReason = 'arrived';
+      break;
+    }
+
+    if (fuelKg - fuelThisStep <= reserveKg){
+      // Would dip into reserve during this step -- stop at the point reserve is reached.
+      const fuelAvailableAboveReserve = fuelKg - reserveKg;
+      const frac = fuelAvailableAboveReserve > 0 ? (fuelAvailableAboveReserve / fuelThisStep) : 0;
+      const partFuel = fuelThisStep * frac;
+      const partDist = distThisStep * frac;
+      const partMin = stepHr * 60 * frac;
+      weightKg -= partFuel;
+      fuelKg -= partFuel;
+      elapsedMin += partMin;
+      distRemaining -= partDist;
+      rows.push({
+        t: elapsedMin, weightKg, fuelKg, distRemaining,
+        tas: Math.round(equipTas), fuelFlowKgH, gs: Math.round(gs),
+        note: 'Reserve reached', flagKind
+      });
+      stopReason = 'reserve';
+      break;
+    }
+
+    // Normal full step
+    weightKg -= fuelThisStep;
+    fuelKg -= fuelThisStep;
+    elapsedMin += stepHr * 60;
+    distRemaining -= distThisStep;
+    if (usingLegs && legQueue.length) legQueue.shift();   // crossed the fix
+    rows.push({
+      t: elapsedMin, weightKg, fuelKg, distRemaining,
+      tas: Math.round(equipTas), fuelFlowKgH, gs: Math.round(gs),
+      note: stepLabel, flagKind, isFix: reachedFix !== null
+    });
+  }
+
+  if (stopReason === null) stopReason = 'maxsteps';
+
+  return { rows, stopReason, overMax, reserveKg };
+}
+
+
+let category = 'B';
+let rules = 'VFR';
+
+// ---------------------------------------------------------------------
+// ForeFlight .fpl import (BETA)
+//
+// ForeFlight exports Garmin FlightPlan v1 XML. Two things to know:
+//  1. The file is UTF-16 encoded (with BOM) -- reading it as UTF-8 yields
+//     text with a null byte between every character, which is why it looks
+//     "spaced out" in a plain text editor. We sniff the BOM and decode
+//     accordingly rather than assuming.
+//  2. It carries route geometry only. There is NO temperature, NO wind, and
+//     NO field elevation (waypoints give lat/lon, not altitude AMSL). Those
+//     stay pilot-entered -- the import never invents them.
+//
+// What we take: great-circle route distance summed leg by leg, the planned
+// cruise altitude from <flight-data>, and the departure identifier.
+// Deliberately does NOT auto-run the plan: OAT and wind may be left over
+// from a previous flight, and a fuel figure computed on stale air data is
+// worse than no figure at all.
+// ---------------------------------------------------------------------
+
+function fplDecode(buffer){
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE){
+    return new TextDecoder('utf-16le').decode(buffer);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF){
+    return new TextDecoder('utf-16be').decode(buffer);
+  }
+  // No BOM: if roughly every other byte is zero it's still UTF-16 LE
+  let zeros = 0, checked = Math.min(bytes.length, 200);
+  for (let i = 1; i < checked; i += 2) if (bytes[i] === 0) zeros++;
+  if (checked > 20 && zeros > checked / 4){
+    return new TextDecoder('utf-16le').decode(buffer);
+  }
+  return new TextDecoder('utf-8').decode(buffer);
+}
+
+// Great-circle distance in NM between two lat/lon pairs.
+function fplGreatCircleNm(lat1, lon1, lat2, lon2){
+  const R = 3440.065; // earth radius in NM
+  const toRad = d => d * Math.PI / 180;
+  const p1 = toRad(lat1), p2 = toRad(lat2);
+  const dp = toRad(lat2 - lat1), dl = toRad(lon2 - lon1);
+  const a = Math.sin(dp/2)*Math.sin(dp/2) +
+            Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function parseFpl(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('not valid XML -- is this really a ForeFlight .fpl file?');
+
+  const txt = (el) => el && el.textContent ? el.textContent.trim() : '';
+
+  const table = {};
+  doc.querySelectorAll('waypoint-table > waypoint').forEach(function(w){
+    const id = txt(w.querySelector('identifier'));
+    const lat = parseFloat(txt(w.querySelector('lat')));
+    const lon = parseFloat(txt(w.querySelector('lon')));
+    if (id && isFinite(lat) && isFinite(lon)){
+      table[id] = { lat: lat, lon: lon, type: txt(w.querySelector('type')) };
+    }
+  });
+
+  // Route order comes from <route-point>, which is authoritative -- the
+  // waypoint table is a lookup, not necessarily the flown sequence.
+  let order = [];
+  doc.querySelectorAll('route > route-point').forEach(function(rp){
+    const id = txt(rp.querySelector('waypoint-identifier'));
+    if (id) order.push(id);
+  });
+  if (!order.length) order = Object.keys(table);
+
+  const pts = order.filter(function(id){ return table[id]; })
+                   .map(function(id){ return { id: id, lat: table[id].lat, lon: table[id].lon, type: table[id].type }; });
+  if (pts.length < 2) throw new Error('need at least two usable waypoints with coordinates.');
+
+  let dist = 0;
+  for (let i = 1; i < pts.length; i++){
+    dist += fplGreatCircleNm(pts[i-1].lat, pts[i-1].lon, pts[i].lat, pts[i].lon);
+  }
+
+  const cruiseAlt = parseFloat(txt(doc.querySelector('flight-data > altitude-ft')));
+
+  return {
+    name: txt(doc.querySelector('route-name')) || (pts[0].id + ' to ' + pts[pts.length-1].id),
+    tail: txt(doc.querySelector('aircraft-tailnumber')),
+    points: pts,
+    distanceNm: dist,
+    cruiseAltFt: isFinite(cruiseAlt) ? cruiseAlt : null
+  };
+}
+
+// Legs from the most recently imported route, consumed by runMission() so
+// burn-down rows land on waypoints instead of a 15-minute clock. Null until a
+// plan is loaded -- the planner falls back to fixed 15-minute steps, which is
+// exactly how it behaved before the import existed.
+let FPL_LEGS = null;
+
+function applyFplPlan(plan){
+  const applied = [];
+
+  FPL_LEGS = [];
+  for (let i = 1; i < plan.points.length; i++){
+    FPL_LEGS.push({
+      id: plan.points[i].id,
+      distNm: fplGreatCircleNm(plan.points[i-1].lat, plan.points[i-1].lon,
+                               plan.points[i].lat,   plan.points[i].lon)
+    });
+  }
+
+  const distRounded = Math.round(plan.distanceNm);
+  document.getElementById('dist').value = distRounded;
+  applied.push('Total Route Distance &rarr; <strong>' + distRounded.toLocaleString() + ' NM</strong>');
+
+  if (plan.cruiseAltFt !== null){
+    const capped = Math.min(plan.cruiseAltFt, 12000);
+    document.getElementById('hp').value = capped;
+    applied.push('Cruise Pressure Altitude &rarr; <strong>' + capped.toLocaleString() + ' ft</strong>' +
+      (capped !== plan.cruiseAltFt
+        ? ' <span class="fpl-manual">(plan said ' + plan.cruiseAltFt.toLocaleString() + ' ft; charts stop at 12,000)</span>'
+        : ''));
+  }
+
+  const dep = plan.points[0].id;
+  document.getElementById('dep-id').value = dep.slice(0,4);
+  applied.push('Departure identifier &rarr; <strong>' + dep + '</strong>');
+
+  return applied;
+}
+
+// Draw a north-up "stick map" of the imported route as inline SVG.
+//
+// Purpose is verification, not navigation: hold this next to the ForeFlight
+// map and the shape should match. It catches the failure numbers hide -- a
+// fix that parsed fine but sits in the wrong place (transposed sign, bad
+// decimal), which shows up instantly as a dog-leg that isn't in ForeFlight.
+//
+// Projection: equirectangular with longitude scaled by cos(mean latitude).
+// Plotting raw lat/lon would stretch the route east-west -- at 34N that's
+// ~21% too wide, which would make a correct route look wrong and defeat the
+// whole point. Good enough for a shape check over a few hundred NM; it is
+// NOT a navigation chart and says so underneath.
+function renderFplMap(plan){
+  const el = document.getElementById('fpl-map');
+  const pts = plan.points;
+  if (!el || pts.length < 2){ if (el) el.classList.remove('show'); return; }
+
+  const W = 640, H = 380, PAD = 42;
+
+  const lats = pts.map(function(p){ return p.lat; });
+  const lons = pts.map(function(p){ return p.lon; });
+  const meanLat = lats.reduce(function(a,b){ return a+b; },0) / lats.length;
+  const kx = Math.cos(meanLat * Math.PI / 180); // longitude compression
+
+  // Project to a flat plane in NM-ish units (x east, y north)
+  const xs = lons.map(function(v){ return v * kx; });
+  const ys = lats.slice();
+
+  let minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  let minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+
+  // Guard against a zero-extent axis (dead north-south or east-west route)
+  const spanX = (maxX - minX) || 0.01;
+  const spanY = (maxY - minY) || 0.01;
+
+  // One scale for BOTH axes so angles and proportions stay honest --
+  // scaling each axis independently would distort the route's shape.
+  const scale = Math.min((W - 2*PAD) / spanX, (H - 2*PAD) / spanY);
+  const drawnW = spanX * scale, drawnH = spanY * scale;
+  const offX = (W - drawnW) / 2, offY = (H - drawnH) / 2;
+
+  const px = function(i){ return offX + (xs[i] - minX) * scale; };
+  const py = function(i){ return offY + (maxY - ys[i]) * scale; }; // north up
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">';
+
+  // Route line
+  let d = '';
+  for (let i = 0; i < pts.length; i++){
+    d += (i ? ' L ' : 'M ') + px(i).toFixed(1) + ' ' + py(i).toFixed(1);
+  }
+  svg += '<path d="' + d + '" fill="none" stroke="#58a6ff" stroke-width="2.5" '
+       + 'stroke-linejoin="round" stroke-linecap="round"/>';
+
+  // Waypoints first, so no label ever sits under a dot.
+  for (let i = 0; i < pts.length; i++){
+    const isEnd = (i === 0 || i === pts.length - 1);
+    svg += '<circle cx="' + px(i).toFixed(1) + '" cy="' + py(i).toFixed(1) + '" r="' + (isEnd ? 5 : 3) + '" '
+         + 'fill="' + (isEnd ? '#4ade80' : '#58a6ff') + '" stroke="#0a0e14" stroke-width="1.5"/>';
+  }
+
+  // Labels second, with simple collision avoidance. Real routes bunch fixes
+  // together near the departure and arrival ends (KHND/CAVER/BOYTT/OYODA sit
+  // inside 14 NM here), so a fixed offset overlaps badly. Try candidate
+  // positions around each point and take the first that clears everything
+  // already placed; if none clears, drop the label rather than print mush --
+  // an unreadable pile of text is worse than a clean unlabelled dot, and the
+  // route shape is what this map is for.
+  const placed = [];
+  const CH = 6.0; // approx half-width per character at 11px
+  function overlaps(a, b){
+    return !(a.x2 < b.x1 - 2 || a.x1 > b.x2 + 2 || a.y2 < b.y1 - 1 || a.y1 > b.y2 + 1);
+  }
+  for (let i = 0; i < pts.length; i++){
+    const x = px(i), y = py(i);
+    const isEnd = (i === 0 || i === pts.length - 1);
+    const fs = isEnd ? 13 : 11;
+    const halfW = pts[i].id.length * (fs === 13 ? 4.1 : 3.4);
+
+    // dx, dy, anchor -- ordered by preference: right, left, above, below
+    const cands = [
+      [ 9,  4, 'start'],
+      [-9,  4, 'end'],
+      [ 0, -9, 'middle'],
+      [ 0, 16, 'middle'],
+      [ 9, -7, 'start'],
+      [-9, -7, 'end'],
+      [ 9, 15, 'start'],
+      [-9, 15, 'end']
+    ];
+    let chosen = null;
+    for (let ci = 0; ci < cands.length; ci++){
+      const dx = cands[ci][0], dy = cands[ci][1], anchor = cands[ci][2];
+      const tx = x + dx, ty = y + dy;
+      const x1 = anchor === 'start' ? tx : (anchor === 'end' ? tx - halfW*2 : tx - halfW);
+      const box = { x1: x1, x2: x1 + halfW*2, y1: ty - fs*0.8, y2: ty + 2 };
+      if (box.x1 < 2 || box.x2 > W - 2 || box.y1 < 2 || box.y2 > H - 24) continue;
+      let clash = false;
+      for (let pi = 0; pi < placed.length; pi++){ if (overlaps(box, placed[pi])){ clash = true; break; } }
+      // don't cover another waypoint dot either
+      if (!clash){
+        for (let pj = 0; pj < pts.length; pj++){
+          const ox = px(pj), oy = py(pj);
+          if (ox >= box.x1 - 3 && ox <= box.x2 + 3 && oy >= box.y1 - 3 && oy <= box.y2 + 3){ clash = true; break; }
+        }
+      }
+      if (!clash){ chosen = { tx: tx, ty: ty, anchor: anchor, box: box }; break; }
+    }
+    if (!chosen) continue; // no clean spot -- leave this one unlabelled
+    placed.push(chosen.box);
+    // Drawn twice: a dark stroked copy underneath acts as a halo so the text
+    // stays readable if it happens to cross the route line.
+    const tcommon = 'x="' + chosen.tx.toFixed(1) + '" y="' + chosen.ty.toFixed(1) + '" '
+         + 'font-size="' + fs + '" font-family="-apple-system, sans-serif" '
+         + 'font-weight="' + (isEnd ? '600' : '400') + '" text-anchor="' + chosen.anchor + '"';
+    svg += '<text ' + tcommon + ' fill="none" stroke="#0a0e14" stroke-width="3.5" '
+         + 'stroke-linejoin="round">' + pts[i].id + '</text>';
+    svg += '<text ' + tcommon + ' fill="' + (isEnd ? '#e6edf3' : '#9ca3af') + '">' + pts[i].id + '</text>';
+  }
+
+  // North arrow
+  svg += '<g opacity="0.75">'
+       + '<line x1="22" y1="34" x2="22" y2="14" stroke="#9ca3af" stroke-width="1.5"/>'
+       + '<path d="M 22 10 L 18.5 18 L 25.5 18 Z" fill="#9ca3af"/>'
+       + '<text x="22" y="48" fill="#9ca3af" font-size="10" font-family="-apple-system, sans-serif" text-anchor="middle">N</text>'
+       + '</g>';
+
+  // Distance scale bar: pick a round NM value that fits comfortably
+  const nmPerUnit = 60; // 1 degree of latitude = 60 NM, and y is in degrees
+  const pxPerNm = scale / nmPerUnit;
+  const candidates = [10, 25, 50, 100, 200, 500];
+  let barNm = candidates[0];
+  for (let i = 0; i < candidates.length; i++){
+    if (candidates[i] * pxPerNm <= (W - 2*PAD) * 0.32) barNm = candidates[i];
+  }
+  const barPx = barNm * pxPerNm;
+  const bx = W - PAD - barPx, by = H - 18;
+  svg += '<line x1="' + bx.toFixed(1) + '" y1="' + by + '" x2="' + (bx+barPx).toFixed(1) + '" y2="' + by + '" stroke="#6b7280" stroke-width="2"/>'
+       + '<line x1="' + bx.toFixed(1) + '" y1="' + (by-4) + '" x2="' + bx.toFixed(1) + '" y2="' + (by+4) + '" stroke="#6b7280" stroke-width="2"/>'
+       + '<line x1="' + (bx+barPx).toFixed(1) + '" y1="' + (by-4) + '" x2="' + (bx+barPx).toFixed(1) + '" y2="' + (by+4) + '" stroke="#6b7280" stroke-width="2"/>'
+       + '<text x="' + (bx + barPx/2).toFixed(1) + '" y="' + (by-8) + '" fill="#6b7280" font-size="10" '
+       + 'font-family="-apple-system, sans-serif" text-anchor="middle">' + barNm + ' NM</text>';
+
+  svg += '</svg>';
+
+  el.innerHTML = svg
+    + '<div class="fpl-map-note">Route shape check only &mdash; not for navigation. '
+    + 'Compare against ForeFlight before use.</div>';
+  el.classList.add('show');
+}
+
+function handleFplFile(input){
+  const errEl = document.getElementById('fpl-err');
+  const sumEl = document.getElementById('fpl-summary');
+  errEl.classList.remove('show'); errEl.innerHTML = '';
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onerror = function(){
+    errEl.innerHTML = 'Could not read that file.';
+    errEl.classList.add('show');
+  };
+  reader.onload = function(){
+    let plan;
+    try {
+      plan = parseFpl(fplDecode(reader.result));
+    } catch (e){
+      errEl.innerHTML = 'Could not read that plan: ' + e.message;
+      errEl.classList.add('show');
+      sumEl.classList.remove('show');
+      const mapEl = document.getElementById('fpl-map');
+      if (mapEl) mapEl.classList.remove('show');
+      input.value = '';
+      return;
+    }
+
+    const applied = applyFplPlan(plan);
+    const routeStr = plan.points.map(function(p){ return p.id; }).join(' &rarr; ');
+    sumEl.innerHTML =
+      '<div><strong>' + plan.name + '</strong>' + (plan.tail ? ' &middot; ' + plan.tail : '') +
+        ' &middot; ' + plan.points.length + ' waypoints</div>' +
+      '<div class="fpl-route">' + routeStr + '</div>' +
+      '<div style="margin-top:10px;" class="fpl-applied">Filled in: ' + applied.join(' &middot; ') + '</div>' +
+      '<div style="margin-top:6px;" class="fpl-manual">Still yours to set: OAT, wind, departure field elevation, and the weights. ' +
+        'Then press Run Mission Plan.</div>';
+    sumEl.classList.add('show');
+    renderFplMap(plan);
+
+    updateTotalWeight();
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function step(id, delta){
+  const el = document.getElementById(id);
+  el.value = (parseFloat(el.value)||0) + delta;
+}
+
+// Rate of Climb stepper: +/- buttons move in 100 ft/min increments, but the
+// field also accepts direct typed entry anywhere in 500-1500 ft/min (Greg's
+// spec). Clamp on both paths so a stray step past either end, or a typed
+// value outside the range, snaps back to the nearest valid bound rather than
+// silently accepting an ROC the climb math below was never designed to
+// handle (the linear TAS-reduction scale only extrapolates sensibly across
+// this specific window).
+function clampRoc(){
+  const el = document.getElementById('roc');
+  let v = parseFloat(el.value);
+  if (isNaN(v)) v = 500;
+  v = Math.max(500, Math.min(1500, v));
+  el.value = v;
+}
+function stepRoc(delta){
+  const el = document.getElementById('roc');
+  el.value = (parseFloat(el.value)||500) + delta;
+  clampRoc();
+}
+
+function setCategory(c){
+  category = c;
+  document.getElementById('catA-btn').classList.toggle('active', c==='A');
+  document.getElementById('catB-btn').classList.toggle('active', c==='B');
+}
+function setRules(r){
+  rules = r;
+  document.getElementById('ifr-btn').classList.toggle('active', r==='IFR');
+  document.getElementById('vfr-btn').classList.toggle('active', r==='VFR');
+}
+
+function fmtWeight(kg){
+  const lb = kg * KG_TO_LB;
+  return '<span class="wt-lb-big">' + Math.round(lb).toLocaleString() + ' lb</span> <span class="wt-kg-small">/ ' + Math.round(kg).toLocaleString() + ' kg</span>';
+}
+function fmtTime(min){
+  const h = Math.floor(min/60), m = Math.round(min%60);
+  return h + 'h ' + String(m).padStart(2,'0') + 'm';
+}
+
+function runPlanner(){
+  const hp = parseFloat(document.getElementById('hp').value);
+  const oat = parseFloat(document.getElementById('oat').value);
+  const wind = parseFloat(document.getElementById('wind').value);
+  const dist = parseFloat(document.getElementById('dist').value);
+  const zfwKg = parseFloat(document.getElementById('zfw-kg').value);
+  const fuelKg = parseFloat(document.getElementById('fuel-kg').value);
+  const wtKg = zfwKg + fuelKg; // Total Takeoff Weight = ZFW + fuel -- the one weight the rest of this tool uses
+  const maxGwtKg = parseFloat(document.getElementById('maxgwt-kg').value);
+  const hoist = document.getElementById('eqHoist').checked;
+  const tanks = document.getElementById('eqTanks').checked;
+  const reserveMinutes = rules === 'IFR' ? 30 : 20;
+
+  const depElevFt = parseFloat(document.getElementById('dep-elev').value);
+  const depOatC = parseFloat(document.getElementById('dep-oat').value);
+  const roc = parseFloat(document.getElementById('roc').value);
+
+  const resultsDiv = document.getElementById('results');
+  const banner = document.getElementById('result-banner');
+  const maxgwtNote = document.getElementById('maxgwt-note');
+  banner.innerHTML = '';
+  maxgwtNote.innerHTML = '';
+
+  if (wtKg > maxGwtKg){
+    maxgwtNote.innerHTML = '<span style="color:#ef4444;">Takeoff weight (' + Math.round(wtKg).toLocaleString() + ' kg) exceeds CAT ' + category + ' Max Allowable GWT (' + Math.round(maxGwtKg).toLocaleString() + ' kg). Not legal for takeoff as planned.</span>';
+  } else {
+    maxgwtNote.innerHTML = '<span style="color:#4ade80;">Takeoff weight is within CAT ' + category + ' Max Allowable GWT.</span>';
+  }
+
+  const result = runMission({
+    hp, oat, wind, distanceNm: dist,
+    startWeightKg: wtKg, startFuelKg: fuelKg,
+    reserveMinutes, maxGwtKg, hoist, tanks,
+    depElevFt, depOatC, roc,
+    legs: FPL_LEGS
+  });
+
+  const { rows, stopReason, reserveKg } = result;
+  const lastRow = rows[rows.length-1];
+
+  // Title tells you which mode produced this table, so a printed or
+  // screenshotted plan is never ambiguous about what the rows represent.
+  const titleEl = document.getElementById('burn-title');
+  const subEl = document.getElementById('burn-sub');
+  if (titleEl && subEl){
+    if (FPL_LEGS && FPL_LEGS.length){
+      titleEl.innerHTML = 'Waypoint Burn-Down';
+      subEl.innerHTML = 'One row per waypoint from the imported route &mdash; nothing added, nothing skipped. '
+        + 'TAS and fuel flow are re-computed at the actual weight for every leg.';
+    } else {
+      titleEl.innerHTML = '15-Minute Burn-Down';
+      subEl.innerHTML = 'TAS and fuel flow re-computed at the actual weight for each interval &mdash; not a fixed hourly estimate.';
+    }
+  }
+
+  if (stopReason === 'climb-envelope'){
+    banner.innerHTML = '<div class="banner err">Simulation stopped in the climb segment: the cruise best-range TAS or the midpoint Hp/OAT/weight/TAS combination has no published data for this climb (departure elevation ' + Math.round(depElevFt).toLocaleString() + ' ft to cruise ' + Math.round(hp).toLocaleString() + ' ft). Verify against the source charts &mdash; no burn-down computed.</div>';
+  } else if (stopReason === 'envelope'){
+    banner.innerHTML = '<div class="banner err">Simulation stopped: at this point in the flight, the Hp/OAT/weight combination has no published best-range TAS data (Fig n/1 doesn\'t plot a curve there for at least one of the two charts being interpolated between). This is usually a real limit of the aircraft\'s charted envelope at a heavy/hot/high combination, not a computation error &mdash; verify against the source charts (' + lastRow.weightKg.toFixed(0) + ' kg at the point of failure). No further burn-down computed past this point.</div>';
+  } else if (stopReason === 'nogs'){
+    banner.innerHTML = '<div class="banner err">Ground speed is zero or negative (headwind exceeds TAS) &mdash; this aircraft would not make forward progress under these conditions.</div>';
+  } else if (stopReason === 'reserve'){
+    banner.innerHTML = '<div class="banner err">Fuel reserve (' + reserveMinutes + ' min, ' + Math.round(reserveKg).toLocaleString() + ' kg at current burn rate) reached before covering the full route. ' + Math.round(lastRow.distRemaining) + ' NM short of destination. Add fuel, reduce weight, or shorten the route.</div>';
+  } else if (stopReason === 'arrived'){
+    banner.innerHTML = '<div class="banner ok">Route complete with reserve intact. Landing with ' + Math.round(lastRow.fuelKg).toLocaleString() + ' kg / ' + Math.round(lastRow.fuelKg*KG_TO_LB).toLocaleString() + ' lb remaining (reserve requirement: ' + Math.round(reserveKg).toLocaleString() + ' kg).</div>';
+  } else {
+    banner.innerHTML = '<div class="banner warn">Simulation reached its internal step limit (24 hours) without arriving or hitting reserve &mdash; check your inputs.</div>';
+  }
+
+  document.getElementById('sum-time').innerHTML = fmtTime(lastRow.t);
+  document.getElementById('sum-dist').innerHTML = Math.round(dist - lastRow.distRemaining).toLocaleString() + '<span class="summary-unit">NM</span>';
+  const fuelEl = document.getElementById('sum-fuel');
+  fuelEl.innerHTML = fmtWeight(lastRow.fuelKg);
+  fuelEl.className = 'summary-value' + (stopReason==='reserve' ? ' err' : '');
+  document.getElementById('sum-weight').innerHTML = fmtWeight(lastRow.weightKg);
+
+  const tbody = document.getElementById('burn-tbody');
+  tbody.innerHTML = '';
+  let hasMcpFlag = false, hasDirectFlag = false, hasMarginLostFlag = false;
+  for (const r of rows){
+    const tr = document.createElement('tr');
+    if (r.note) tr.classList.add('milestone');
+    const noteLine = r.note ? '<div class="time-note">' + r.note + '</div>' : '';
+    // Flagged rows (MCP margin or Table-A-missing fallback) get a small
+    // asterisk next to the time instead of spelling the reason out on every
+    // row -- the explanation is shown once in the footnote below the table.
+    const asterisk = r.flagKind ? '<span class="row-asterisk">*</span>' : '';
+    if (r.flagKind === 'mcp') hasMcpFlag = true;
+    if (r.flagKind === 'direct') hasDirectFlag = true;
+    if (r.flagKind === 'marginlost') hasMarginLostFlag = true;
+    tr.innerHTML =
+      '<td>' + fmtTime(r.t) + asterisk + noteLine + '</td>' +
+      '<td>' + (r.tas!==null ? r.tas : '&mdash;') + '</td>' +
+      '<td>' + (r.gs!==null ? r.gs : '&mdash;') + '</td>' +
+      '<td>' + Math.round(r.weightKg * KG_TO_LB).toLocaleString() + '</td>' +
+      '<td>' + Math.round(r.fuelKg * KG_TO_LB).toLocaleString() + '</td>' +
+      '<td>' + (r.fuelFlowKgH!==null ? Math.round(r.fuelFlowKgH * KG_TO_LB).toLocaleString() : '&mdash;') + '</td>' +
+      '<td>' + Math.round(r.distRemaining).toLocaleString() + '</td>';
+    tbody.appendChild(tr);
+  }
+
+  const footnoteEl = document.getElementById('burn-footnote');
+  const footnoteLines = [];
+  if (result.climbInfo){
+    const ci = result.climbInfo;
+    footnoteLines.push('Climb segment: ' + Math.round(ci.climbGapFt).toLocaleString() + ' ft gap at ' + Math.round(roc).toLocaleString() + ' ft/min &mdash; TAS reduced ' + ci.reductionPct.toFixed(0) + '% off cruise best-range (' + Math.round(ci.cruiseTas) + ' kt) to ' + ci.climbTas + ' kt for climb time/distance. Fuel flow is NOT looked up at that reduced TAS (Table B is a level-flight chart, and a climbing aircraft burns more than level flight at the same airspeed) &mdash; instead it targets ' + MCP_MARGIN_PCT + '% below AEO Max Continuous at midpoint Hp ' + Math.round(ci.midHp).toLocaleString() + ' ft / OAT ' + ci.midOat.toFixed(0) + '&deg;C, using whichever charted TAS (' + ci.climbPowerTas + ' kt) Table B pairs with that torque.');
+  }
+  if (hasMcpFlag){
+    const cm = cruiseMarginPct();
+    footnoteLines.push(cm > 0
+      ? '* TAS reduced to hold cruise torque ' + cm + '% below AEO Max Continuous (FCOM operational power margin &mdash; checkbox enabled).'
+      : '* TAS reduced to keep cruise torque at or below AEO Max Continuous (no additional margin &mdash; FCOM 7% margin checkbox is OFF).');
+  }
+  if (hasDirectFlag) footnoteLines.push('* No Fig n/1 (Table A) data at this weight/Hp/OAT -- fastest TAS from Fig n/2 (Table B) within the MCP margin, not the book\'s best-range recommendation.');
+  if (hasMarginLostFlag) footnoteLines.push('* <strong>FCOM ' + CRUISE_MARGIN_FCOM_PCT + '% margin NOT achievable at this weight/Hp/OAT</strong> -- no charted TAS keeps torque that far below AEO Max Continuous, so this step is planned at AEO Max Continuous itself, with no power margin in reserve.');
+  footnoteEl.innerHTML = footnoteLines.join('<br>');
+  footnoteEl.style.display = footnoteLines.length ? 'block' : 'none';
+
+  resultsDiv.style.display = 'block';
+}
+
+updateTotalWeight();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('sw.js').catch(function() {});
+  });
+}
+
+async function forceRefresh() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.unregister();
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } finally {
+    location.reload();
+  }
+}
+</script>
+</body>
+</html>
