@@ -226,7 +226,15 @@
   <div class="section">
     <div class="section-title">Flight Plan Import</div>
     <div class="section-sub">Load a ForeFlight <code>.fpl</code> route to fill Total Route Distance, Cruise Pressure Altitude, and the departure identifier. OAT, wind, and field elevation are <strong>not</strong> in the file &mdash; enter those yourself. Nothing is uploaded; the file is read on this device.</div>
-    <input type="file" id="fpl-file" accept=".fpl,.xml,text/xml" style="display:none" onchange="handleFplFile(this)">
+    <!-- No `accept` filter on purpose. macOS treats accept as a loose hint, but
+         iOS resolves it through Uniform Type Identifiers: .fpl has no registered
+         UTI, so iOS cannot identify the type and greys the file out in the Files
+         picker -- the plan is visible but unselectable. Leaving accept off keeps
+         every file selectable on iPad/iPhone; the parser already validates what
+         was actually chosen and rejects anything that is not a flight plan with a
+         readable message, so nothing is lost by not filtering here.
+         (iOS greyed-out fix, 2026-09-02.) -->
+    <input type="file" id="fpl-file" style="display:none" onchange="handleFplFile(this)">
     <button class="fpl-btn" onclick="document.getElementById('fpl-file').click()">Load ForeFlight Plan (.fpl)</button>
     <div class="fpl-err" id="fpl-err"></div>
     <div class="fpl-summary" id="fpl-summary"></div>
@@ -1489,7 +1497,9 @@ function handleFplFile(input){
     try {
       plan = parseFpl(fplDecode(reader.result));
     } catch (e){
-      errEl.innerHTML = 'Could not read that plan: ' + e.message;
+      errEl.innerHTML = 'That does not look like a ForeFlight flight plan (' + e.message + ')<br>'
+        + 'In ForeFlight: open the route, tap Share, choose <strong>Send to Self</strong> or '
+        + '<strong>Save to Files</strong>, then pick the saved <strong>.fpl</strong> here.';
       errEl.classList.add('show');
       sumEl.classList.remove('show');
       const mapEl = document.getElementById('fpl-map');
