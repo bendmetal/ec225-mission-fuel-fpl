@@ -82,6 +82,35 @@
   .fpl-map svg { width: 100%; height: auto; display: block;
     background: #0a0e14; border: 1px solid #1f2937; border-radius: 10px; }
   .fpl-map-note { font-size: 11px; color: #6b7280; margin-top: 6px; text-align: center; }
+  /* Cross-app handoff strip: offers a Cat A/B result saved in another tool. */
+  .handoff-strip {
+    display: none; margin-bottom: 14px; padding: 12px 14px;
+    background: rgba(88,166,255,0.07); border: 1px solid rgba(88,166,255,0.35);
+    border-radius: 8px;
+  }
+  .handoff-strip.show { display: block; }
+  .handoff-strip .hs-head {
+    font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase;
+    color: #58a6ff; font-weight: 600; margin-bottom: 6px;
+  }
+  .handoff-strip .hs-wt { font-size: 15px; font-weight: 700; color: #e6edf3; }
+  .handoff-strip .hs-wt .hs-kg { font-size: 12px; font-weight: 500; color: #9ca3af; }
+  .handoff-strip .hs-meta { font-size: 11px; color: #9ca3af; margin-top: 4px; line-height: 1.5; }
+  .handoff-strip .hs-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .handoff-strip .hs-btns button {
+    flex: 1; padding: 9px 10px; border-radius: 6px; font-family: inherit;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .handoff-strip .hs-use {
+    background: rgba(88,166,255,0.18); border: 1px solid rgba(88,166,255,0.5); color: #58a6ff;
+  }
+  .handoff-strip .hs-dismiss {
+    background: transparent; border: 1px solid #374151; color: #7d8590;
+  }
+  .handoff-strip.applied { background: rgba(74,222,128,0.07); border-color: rgba(74,222,128,0.35); }
+  .handoff-strip.applied .hs-head { color: #4ade80; }
+
   .section-sub { font-size: 11px; color: #7d8590; margin-bottom: 14px; }
   .subsection-divider { border-top: 1px solid #1f2937; margin: 16px 0 4px; }
 
@@ -251,6 +280,8 @@
       <button class="toggle-btn" id="ifr-btn" onclick="setRules('IFR')">IFR &middot; 30 min reserve</button>
       <button class="toggle-btn active" id="vfr-btn" onclick="setRules('VFR')">VFR &middot; 20 min reserve</button>
     </div>
+
+    <div class="handoff-strip" id="handoff-strip"></div>
 
     <div class="field">
       <label>CAT A/B Max Allowable GWT (from chart)</label>
@@ -1691,6 +1722,105 @@ function runPlanner(){
 
   resultsDiv.style.display = 'block';
 }
+
+// ===================================================================
+// Cross-app handoff receiver
+// -------------------------------------------------------------------
+// The Cat A and Cat B calculators can save their computed Max Allowable
+// GWT to localStorage. All the tools share one origin
+// (bendmetal.github.io), so that value is readable here even though the
+// apps live in different folders.
+//
+// Deliberate design choices, because this feeds a weight-and-balance
+// number a pilot will fly against:
+//   * NEVER auto-fill. The strip offers the value; the pilot taps Use.
+//   * The conditions the number came from are shown alongside it, so a
+//     stale result computed at the wrong PA/OAT is visible as such.
+//   * Anything older than 6 hours is not offered at all.
+//   * A storage failure is silent -- the planner still works by hand.
+// ===================================================================
+const EC225_HANDOFF_KEY = 'ec225.handoff.maxgwt';
+const EC225_HANDOFF_MAX_AGE_MIN = 360;   // 6 hours
+
+function ec225ReadHandoff(){
+  try {
+    const raw = localStorage.getItem(EC225_HANDOFF_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p.kg !== 'number' || !p.savedAt) return null;
+    p.ageMin = (Date.now() - p.savedAt) / 60000;
+    if (p.ageMin > EC225_HANDOFF_MAX_AGE_MIN) return null;   // too old to offer
+    return p;
+  } catch (e) { return null; }
+}
+function ec225ClearHandoff(){
+  try { localStorage.removeItem(EC225_HANDOFF_KEY); } catch (e) {}
+}
+function ec225AgeText(min){
+  if (min < 1) return 'just now';
+  if (min < 60) return Math.round(min) + ' min ago';
+  const h = min / 60;
+  if (h < 2) return '1 hour ago';
+  return Math.round(h) + ' hours ago';
+}
+
+let handoffPending = null;
+
+function renderHandoffStrip(){
+  const el = document.getElementById('handoff-strip');
+  if (!el) return;
+  const p = ec225ReadHandoff();
+  handoffPending = p;
+  if (!p){ el.classList.remove('show'); el.innerHTML = ''; return; }
+  el.classList.remove('applied');
+  el.innerHTML =
+    '<div class="hs-head">From ' + (p.source || 'another tool') + '</div>' +
+    '<div class="hs-wt">' + Math.round(p.lb != null ? p.lb : p.kg * KG_TO_LB).toLocaleString() + ' lb' +
+      ' <span class="hs-kg">/ ' + Math.round(p.kg).toLocaleString() + ' kg</span></div>' +
+    '<div class="hs-meta">' + (p.conditions ? p.conditions + '<br>' : '') +
+      'Saved ' + ec225AgeText(p.ageMin) + '. Check it still matches today\u2019s conditions before using it.</div>' +
+    '<div class="hs-btns">' +
+      '<button class="hs-use" onclick="applyHandoff()">Use this weight</button>' +
+      '<button class="hs-dismiss" onclick="dismissHandoff()">Dismiss</button>' +
+    '</div>';
+  el.classList.add('show');
+}
+
+function applyHandoff(){
+  const p = handoffPending;
+  if (!p) return;
+  // Write BOTH fields from the payload rather than deriving lb from kg.
+  // The sending app rounds lb to the nearest 10, so a round-trip through
+  // kg lands 1-5 lb off -- and a pilot comparing the two screens reads
+  // that as one of the tools being wrong. Show the same number both places.
+  document.getElementById('maxgwt-kg').value = Math.round(p.kg);
+  if (p.lb != null) document.getElementById('maxgwt-lb').value = Math.round(p.lb);
+  else syncWeightFromKg('maxgwt');
+  if (p.category === 'A' || p.category === 'B') setCategory(p.category);
+  const el = document.getElementById('handoff-strip');
+  el.classList.add('applied');
+  el.innerHTML =
+    '<div class="hs-head">Applied</div>' +
+    '<div class="hs-meta">CAT ' + (p.category || '?') + ' Max Allowable GWT set to ' +
+      Math.round(p.lb != null ? p.lb : p.kg * KG_TO_LB).toLocaleString() + ' lb / ' +
+      Math.round(p.kg).toLocaleString() + ' kg from ' + (p.source || 'another tool') +
+      '. Edit it above if the chart conditions have changed.</div>';
+  handoffPending = null;
+}
+
+function dismissHandoff(){
+  ec225ClearHandoff();
+  handoffPending = null;
+  const el = document.getElementById('handoff-strip');
+  el.classList.remove('show'); el.innerHTML = '';
+}
+
+renderHandoffStrip();
+// Re-check on return to the tab: the pilot may have gone to a Cat A/B
+// calculator and come back with a fresh number in the same session.
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden && !handoffPending) renderHandoffStrip();
+});
 
 updateTotalWeight();
 
