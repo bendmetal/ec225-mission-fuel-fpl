@@ -1288,11 +1288,23 @@ function runMission(params){
       break;
     }
 
-    // Reserve threshold in kg, computed once we know a fuel flow to convert
-    // the reserve TIME into a fuel WEIGHT at the current burn rate.
-    if (reserveKg === null){
-      reserveKg = fuelFlowKgH * (reserveMinutes / 60);
-    }
+    // Reserve threshold: the reserve TIME converted into a fuel WEIGHT at
+    // THIS step's burn rate, recomputed every step.
+    //
+    // It used to be computed once, on the first cruise step, and then frozen
+    // for the rest of the flight -- while the message still claimed it was
+    // "at current burn rate". On Greg's KFWS-KMEM plan that froze it to the
+    // 1,166 lb/h rate at the first fix, giving a 583 lb trigger, when the
+    // rate on the leg it actually fired on was 1,153 lb/h -- a 576 lb
+    // reserve. He spotted the 7 lb himself from the nav log.
+    //
+    // Recomputing per step is what he asked for and it is the right number:
+    // the reserve is flown near the destination, at the weight and burn rate
+    // showing on that last leg -- which is the figure in front of the pilot
+    // when the decision gets made. With a route loaded that is the final
+    // leg's rate; with no route it is the last 15-minute step's. It also
+    // makes the message true for the first time.
+    reserveKg = fuelFlowKgH * (reserveMinutes / 60);
 
     // tasCapped (chart-max cap) intentionally adds no row flag -- Greg asked
     // to stop surfacing that one in the burn-down table; the cap itself still
@@ -1787,7 +1799,7 @@ function runPlanner(){
   maxgwtNote.innerHTML = '';
 
   if (wtKg > maxGwtKg){
-    maxgwtNote.innerHTML = '<span style="color:#ef4444;">Takeoff weight (' + Math.round(wtKg).toLocaleString() + ' kg) exceeds CAT ' + category + ' Max Allowable GWT (' + Math.round(maxGwtKg).toLocaleString() + ' kg). Not legal for takeoff as planned.</span>';
+    maxgwtNote.innerHTML = '<span style="color:#ef4444;">Takeoff weight (' + fmtWeight(wtKg) + ') exceeds CAT ' + category + ' Max Allowable GWT (' + fmtWeight(maxGwtKg) + '). Not legal for takeoff as planned.</span>';
   } else {
     maxgwtNote.innerHTML = '<span style="color:#4ade80;">Takeoff weight is within CAT ' + category + ' Max Allowable GWT.</span>';
   }
@@ -1821,13 +1833,35 @@ function runPlanner(){
   if (stopReason === 'climb-envelope'){
     banner.innerHTML = '<div class="banner err">Simulation stopped in the climb segment: the cruise best-range TAS or the midpoint Hp/OAT/weight/TAS combination has no published data for this climb (departure elevation ' + Math.round(depElevFt).toLocaleString() + ' ft to cruise ' + Math.round(hp).toLocaleString() + ' ft). Verify against the source charts &mdash; no burn-down computed.</div>';
   } else if (stopReason === 'envelope'){
-    banner.innerHTML = '<div class="banner err">Simulation stopped: at this point in the flight, the Hp/OAT/weight combination has no published best-range TAS data (Fig n/1 doesn\'t plot a curve there for at least one of the two charts being interpolated between). This is usually a real limit of the aircraft\'s charted envelope at a heavy/hot/high combination, not a computation error &mdash; verify against the source charts (' + lastRow.weightKg.toFixed(0) + ' kg at the point of failure). No further burn-down computed past this point.</div>';
+    banner.innerHTML = '<div class="banner err">Simulation stopped: at this point in the flight, the Hp/OAT/weight combination has no published best-range TAS data (Fig n/1 doesn\'t plot a curve there for at least one of the two charts being interpolated between). This is usually a real limit of the aircraft\'s charted envelope at a heavy/hot/high combination, not a computation error &mdash; verify against the source charts (' + fmtWeight(lastRow.weightKg) + ' at the point of failure). No further burn-down computed past this point.</div>';
   } else if (stopReason === 'nogs'){
     banner.innerHTML = '<div class="banner err">Ground speed is zero or negative (headwind exceeds TAS) &mdash; this aircraft would not make forward progress under these conditions.</div>';
   } else if (stopReason === 'reserve'){
-    banner.innerHTML = '<div class="banner err">Fuel reserve (' + reserveMinutes + ' min, ' + Math.round(reserveKg).toLocaleString() + ' kg at current burn rate) reached before covering the full route. ' + Math.round(lastRow.distRemaining) + ' NM short of destination. Add fuel, reduce weight, or shorten the route.</div>';
+    banner.innerHTML = (function(){
+      // State BOTH numbers. The threshold tracks each leg's burn rate, and on
+      // a leg where that rate RISES (lighter aircraft, faster TAS) the
+      // requirement can land just above the fuel already in the tanks -- so
+      // the plan stops at once, marginally inside reserve. Showing only the
+      // requirement would leave a sharp reader asking why the two disagree,
+      // which is exactly the question that produced this fix.
+      const remLb = lastRow.fuelKg * KG_TO_LB;
+      const reqLb = reserveKg * KG_TO_LB;
+      const inside = remLb < reqLb - 0.5;
+      return '<div class="banner err">Fuel reserve reached '
+        + Math.round(lastRow.distRemaining).toLocaleString() + ' NM short of destination.<br>'
+        + 'Fuel remaining ' + fmtWeight(lastRow.fuelKg) + ' against a ' + reserveMinutes
+        + ' min reserve of ' + fmtWeight(reserveKg) + ', at the '
+        + Math.round(lastRow.fuelFlowKgH * KG_TO_LB).toLocaleString()
+        + ' lb/h burn rate on this leg.'
+        + (inside
+            ? '<br>Burn rate rose on this leg, so the requirement moved above the fuel on board &mdash; '
+              + Math.round(reqLb - remLb).toLocaleString() + ' lb inside reserve already, stopped here.'
+            : '')
+        + ' Add fuel, reduce weight, or shorten the route.</div>';
+    })();
   } else if (stopReason === 'arrived'){
-    banner.innerHTML = '<div class="banner ok">Route complete with reserve intact. Landing with ' + Math.round(lastRow.fuelKg).toLocaleString() + ' kg / ' + Math.round(lastRow.fuelKg*KG_TO_LB).toLocaleString() + ' lb remaining (reserve requirement: ' + Math.round(reserveKg).toLocaleString() + ' kg).</div>';
+    banner.innerHTML = '<div class="banner ok">Route complete with reserve intact. Landing with ' + fmtWeight(lastRow.fuelKg)
+      + ' remaining (' + reserveMinutes + ' min reserve requirement: ' + fmtWeight(reserveKg) + ').</div>';
   } else {
     banner.innerHTML = '<div class="banner warn">Simulation reached its internal step limit (24 hours) without arriving or hitting reserve &mdash; check your inputs.</div>';
   }
