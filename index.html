@@ -261,6 +261,21 @@
     vertical-align: 1px;
   }
 
+  .ruload-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 10px; padding: 12px 14px; border-radius: 8px;
+    background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.28);
+  }
+  .ruload-row.over {
+    background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.45);
+  }
+  .ruload-label { font-size: 11px; color: #9ca3af; letter-spacing: 0.4px; }
+  .ruload-val { font-size: 19px; font-weight: 700; color: #4ade80; }
+  .ruload-row.over .ruload-val { color: #f87171; }
+  .ruload-val .ruload-kg { font-size: 12px; font-weight: 500; color: #6b7280; }
+  .ruload-note { margin-top: 6px; font-size: 11px; line-height: 1.5; color: #7d8590; }
+  .ruload-note.over { color: #f87171; }
+
   .info {
     margin-top: 4px; margin-bottom: 16px;
     padding: 12px 14px;
@@ -341,17 +356,17 @@
         <div class="weight-unit emphasis-unit">
           <div class="weight-unit-label">lb</div>
           <div class="stepper">
-            <button onclick="stepWeightLb('maxgwt',-200)">&minus;</button>
-            <input type="number" class="emphasis" id="maxgwt-lb" value="24251" step="200" oninput="syncWeightFromLb('maxgwt')">
-            <button onclick="stepWeightLb('maxgwt',200)">+</button>
+            <button onclick="stepWeightLb('maxgwt',-200); updateTotalWeight();">&minus;</button>
+            <input type="number" class="emphasis" id="maxgwt-lb" value="24251" step="200" oninput="syncWeightFromLb('maxgwt'); updateTotalWeight();">
+            <button onclick="stepWeightLb('maxgwt',200); updateTotalWeight();">+</button>
           </div>
         </div>
         <div class="weight-unit de-emphasis-unit">
           <div class="weight-unit-label">kg</div>
           <div class="stepper">
-            <button onclick="stepWeightKg('maxgwt',-100)">&minus;</button>
-            <input type="number" class="de-emphasis" id="maxgwt-kg" value="11000" step="100" oninput="syncWeightFromKg('maxgwt')">
-            <button onclick="stepWeightKg('maxgwt',100)">+</button>
+            <button onclick="stepWeightKg('maxgwt',-100); updateTotalWeight();">&minus;</button>
+            <input type="number" class="de-emphasis" id="maxgwt-kg" value="11000" step="100" oninput="syncWeightFromKg('maxgwt'); updateTotalWeight();">
+            <button onclick="stepWeightKg('maxgwt',100); updateTotalWeight();">+</button>
           </div>
         </div>
       </div>
@@ -451,7 +466,7 @@
 
   <div class="section">
     <div class="section-title">Weight &amp; Fuel</div>
-    <div class="section-sub">Zero Fuel Weight is the aircraft empty weight plus crew and payload &mdash; everything except fuel. Fuel on board is added to it below to get total takeoff weight.</div>
+    <div class="section-sub"><strong>Zero Fuel Weight here is the aircraft empty weight plus crew only.</strong> Cargo and passengers go in <strong>Payload</strong> below, not in this box &mdash; if you are used to Zero Fuel Weight meaning empty + crew + payload, split it across the two. Takeoff weight is Zero Fuel Weight + Payload + Fuel.</div>
 
     <div class="field">
       <label>Zero Fuel Weight</label>
@@ -470,6 +485,28 @@
             <button onclick="stepWeightKg('zfw',-100); updateTotalWeight();">&minus;</button>
             <input type="number" class="de-emphasis" id="zfw-kg" value="6917" step="100" oninput="syncWeightFromKg('zfw'); updateTotalWeight();">
             <button onclick="stepWeightKg('zfw',100); updateTotalWeight();">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Payload <span style="text-transform:none;letter-spacing:0;color:#6b7280;">(cargo + passengers)</span></label>
+      <div class="weight-pair">
+        <div class="weight-unit emphasis-unit">
+          <div class="weight-unit-label">lb</div>
+          <div class="stepper">
+            <button onclick="stepWeightLb('payload',-100); updateTotalWeight();">&minus;</button>
+            <input type="number" class="emphasis" id="payload-lb" value="0" step="100" oninput="syncWeightFromLb('payload'); updateTotalWeight();">
+            <button onclick="stepWeightLb('payload',100); updateTotalWeight();">+</button>
+          </div>
+        </div>
+        <div class="weight-unit de-emphasis-unit">
+          <div class="weight-unit-label">kg</div>
+          <div class="stepper">
+            <button onclick="stepWeightKg('payload',-50); updateTotalWeight();">&minus;</button>
+            <input type="number" class="de-emphasis" id="payload-kg" value="0" step="50" oninput="syncWeightFromKg('payload'); updateTotalWeight();">
+            <button onclick="stepWeightKg('payload',50); updateTotalWeight();">+</button>
           </div>
         </div>
       </div>
@@ -503,6 +540,14 @@
       <div class="summary-cell" style="text-align:center; padding: 12px;">
         <div id="total-wt-display" style="font-size:19px; font-weight:600; color:#e6edf3;">&mdash;</div>
       </div>
+    </div>
+
+    <div class="field">
+      <div class="ruload-row" id="ruload-row">
+        <div class="ruload-label">REMAINING<br>USEFUL LOAD</div>
+        <div class="ruload-val" id="ruload-display">&mdash;</div>
+      </div>
+      <div class="ruload-note" id="ruload-note"></div>
     </div>
 
   </div>
@@ -865,12 +910,48 @@ function stepFuelLb(prefix, delta){
 // "takeoff weight" field for the pilot to fill in inconsistently with the
 // fuel figure; this is the one number the rest of the tool uses.
 function updateTotalWeight(){
-  const zfwKg = parseFloat(document.getElementById('zfw-kg').value) || 0;
-  const fuelKg = parseFloat(document.getElementById('fuel-kg').value) || 0;
-  const totalKg = zfwKg + fuelKg;
-  const totalLb = totalKg * KG_TO_LB;
+  const zfwKg     = parseFloat(document.getElementById('zfw-kg').value) || 0;
+  const payloadKg = parseFloat(document.getElementById('payload-kg').value) || 0;
+  const fuelKg    = parseFloat(document.getElementById('fuel-kg').value) || 0;
+  const totalKg   = zfwKg + payloadKg + fuelKg;
+  const totalLb   = totalKg * KG_TO_LB;
   document.getElementById('total-wt-display').innerHTML =
     Math.round(totalLb).toLocaleString() + ' lb <span style="color:#6b7280;font-weight:400;">/ ' + Math.round(totalKg).toLocaleString() + ' kg</span>';
+
+  // Remaining useful load: how much more can still go on board before the
+  // limit in the Max Allowable GWT box -- which is MTOW 24,251 lb by default,
+  // or the lower Cat A/B chart figure once one is entered or handed over from
+  // the weight tools. Whatever is in that box is the binding limit, so that is
+  // what this counts against. Negative means already over it, and says so
+  // rather than showing a minus sign the eye can skip.
+  const rowEl  = document.getElementById('ruload-row');
+  const dispEl = document.getElementById('ruload-display');
+  const noteEl = document.getElementById('ruload-note');
+  if (rowEl && dispEl){
+    const maxGwtKg = parseFloat(document.getElementById('maxgwt-kg').value);
+    if (isNaN(maxGwtKg) || maxGwtKg <= 0){
+      rowEl.classList.remove('over');
+      dispEl.innerHTML = '&mdash;';
+      if (noteEl){ noteEl.className = 'ruload-note';
+        noteEl.innerHTML = 'Set CAT A/B Max Allowable GWT above to see what is left.'; }
+    } else {
+      const remKg = maxGwtKg - totalKg;
+      const remLb = remKg * KG_TO_LB;
+      const over  = remKg < 0;
+      rowEl.classList.toggle('over', over);
+      dispEl.innerHTML = Math.round(Math.abs(remLb)).toLocaleString() + ' lb'
+        + ' <span class="ruload-kg">/ ' + Math.round(Math.abs(remKg)).toLocaleString() + ' kg</span>';
+      if (noteEl){
+        noteEl.className = 'ruload-note' + (over ? ' over' : '');
+        noteEl.innerHTML = over
+          ? '<strong>OVER by this much.</strong> Takeoff weight '
+            + Math.round(totalLb).toLocaleString() + ' lb exceeds the '
+            + Math.round(maxGwtKg * KG_TO_LB).toLocaleString() + ' lb limit. Offload or reduce fuel.'
+          : 'Still available against the ' + Math.round(maxGwtKg * KG_TO_LB).toLocaleString()
+            + ' lb limit, with this fuel load.';
+      }
+    }
+  }
   return totalKg;
 }
 
@@ -1688,7 +1769,8 @@ function runPlanner(){
   const dist = parseFloat(document.getElementById('dist').value);
   const zfwKg = parseFloat(document.getElementById('zfw-kg').value);
   const fuelKg = parseFloat(document.getElementById('fuel-kg').value);
-  const wtKg = zfwKg + fuelKg; // Total Takeoff Weight = ZFW + fuel -- the one weight the rest of this tool uses
+  const payloadKg = parseFloat(document.getElementById('payload-kg').value) || 0;
+  const wtKg = zfwKg + payloadKg + fuelKg; // Total Takeoff Weight = ZFW + payload + fuel -- the one weight the rest of this tool uses
   const maxGwtKg = parseFloat(document.getElementById('maxgwt-kg').value);
   const hoist = document.getElementById('eqHoist').checked;
   const tanks = document.getElementById('eqTanks').checked;
@@ -1876,6 +1958,7 @@ function applyHandoff(){
   if (p.lb != null) document.getElementById('maxgwt-lb').value = Math.round(p.lb);
   else syncWeightFromKg('maxgwt');
   if (p.category === 'A' || p.category === 'B') setCategory(p.category);
+  updateTotalWeight();   // the limit just changed, so remaining useful load must follow
   try { ec225SaveInputs(); } catch (e) {}   // remember the accepted weight
 
   const el = document.getElementById('handoff-strip');
@@ -1942,7 +2025,7 @@ const EC225_APP_ID         = 'ec225-mission-fuel-fpl';
 const EC225_SUPPORTS_ROUTE = true;
 
 const EC225_FLIGHT_FIELDS = ['maxgwt-lb','maxgwt-kg','dep-id','dep-elev','dep-oat',
-  'roc','hp','oat','dist','wind','zfw-lb','zfw-kg','fuel-lb','fuel-kg'];
+  'roc','hp','oat','dist','wind','zfw-lb','zfw-kg','payload-lb','payload-kg','fuel-lb','fuel-kg'];
 const EC225_FLIGHT_CHECKS = ['eqHoist','eqTanks','fcop-margin'];
 
 function ec225FlightObject(){
@@ -2338,6 +2421,7 @@ function ec225InitSticky(){
       ec225ApplyInputs(d.v);
       ec225RestoreExtra(d.x);
       clampFuel();   // restored inputs are re-checked against capacity
+      updateTotalWeight();   // and the totals redrawn from them
       ec225StickyNote(mins);
       ec225Recompute();
     }
