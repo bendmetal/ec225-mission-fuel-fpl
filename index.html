@@ -251,6 +251,9 @@
   .sticky-note.show { display: block; }
   .sticky-note a { color: #818cf8; text-decoration: none; font-weight: 600; }
 
+  .fuel-cap-note { margin-top: 6px; font-size: 11px; line-height: 1.5; color: #7d8590; }
+  .fuel-cap-note.capped { color: #fbbf24; }
+
   .info {
     margin-top: 4px; margin-bottom: 16px;
     padding: 12px 14px;
@@ -354,7 +357,7 @@
     <div class="section-title" style="margin-top:14px;">Optional Equipment</div>
     <div class="section-sub">Applies -3% each to TAS at each 15-minute step (only where TAS &ge; V<sub>y</sub>), per RFM Section 10.0. Torque and fuel flow are unaffected (no correction given for those in the book).</div>
     <div class="equip-row"><input type="checkbox" id="eqHoist" checked><label for="eqHoist">Single/dual hoist installed</label></div>
-    <div class="equip-row"><input type="checkbox" id="eqTanks" checked><label for="eqTanks">Forward external fuel tanks / luggage cases installed</label></div>
+    <div class="equip-row"><input type="checkbox" id="eqTanks" checked onchange="clampFuel(); updateTotalWeight();"><label for="eqTanks">Forward external fuel tanks (EFT) installed</label></div>
 
     <div class="subsection-divider"></div>
 
@@ -471,20 +474,21 @@
         <div class="weight-unit emphasis-unit">
           <div class="weight-unit-label">lb</div>
           <div class="stepper">
-            <button onclick="stepFuelLb('fuel',-100); updateTotalWeight();">&minus;</button>
-            <input type="number" class="emphasis" id="fuel-lb" value="4500" step="100" oninput="syncFuelFromLb('fuel'); updateTotalWeight();">
-            <button onclick="stepFuelLb('fuel',100); updateTotalWeight();">+</button>
+            <button onclick="stepFuelLb('fuel',-100); clampFuel(); updateTotalWeight();">&minus;</button>
+            <input type="number" class="emphasis" id="fuel-lb" value="4500" step="100" oninput="syncFuelFromLb('fuel'); clampFuel(); updateTotalWeight();">
+            <button onclick="stepFuelLb('fuel',100); clampFuel(); updateTotalWeight();">+</button>
           </div>
         </div>
         <div class="weight-unit de-emphasis-unit">
           <div class="weight-unit-label">kg</div>
           <div class="stepper">
-            <button onclick="stepFuelKg('fuel',-50); updateTotalWeight();">&minus;</button>
-            <input type="number" class="de-emphasis" id="fuel-kg" value="2041" step="50" oninput="syncFuelFromKg('fuel'); updateTotalWeight();">
-            <button onclick="stepFuelKg('fuel',50); updateTotalWeight();">+</button>
+            <button onclick="stepFuelKg('fuel',-50); clampFuel(); updateTotalWeight();">&minus;</button>
+            <input type="number" class="de-emphasis" id="fuel-kg" value="2041" step="50" oninput="syncFuelFromKg('fuel'); clampFuel(); updateTotalWeight();">
+            <button onclick="stepFuelKg('fuel',50); clampFuel(); updateTotalWeight();">+</button>
           </div>
         </div>
       </div>
+      <div class="fuel-cap-note" id="fuel-cap-note"></div>
     </div>
 
     <div class="field">
@@ -2137,6 +2141,7 @@ function ec225ApplyFlight(d){
       + '</div>';
   }
 
+  clampFuel();   // a saved flight may exceed the capacity now selected
   try { ec225SaveInputs(); } catch (e) {}   // remember what the file just set
 
   ec225FlightMsg('ff-summary',
@@ -2145,6 +2150,77 @@ function ec225ApplyFlight(d){
     + '<div class="ff-note">Nothing has been calculated yet. Look the inputs over, then press the '
     + 'Calculate button.</div>');
 }
+
+// ===================================================================
+// Fuel tank capacity limit
+// -------------------------------------------------------------------
+// RFM Section 4.10 / Section 7.9, rev 22-48, STANDARD (not self-sealing)
+// tanks, sponson tanks fitted, 6th tank fitted:
+//     internal total                 2 908 l   2 297 kg   5 066 lb
+//     forward external tanks (pair)    600 l     474 kg   1 045 lb
+//     combined                       3 508 l   2 771 kg   6 111 lb
+// These are tank CAPACITIES, not usable fuel -- unusable is a separate
+// ~25 lb (RFM 4.10 section 1.2) and is not deducted here.
+//
+// lb is authoritative and kg is derived, so the two fields can never
+// disagree after a clamp. (The RFM rounds each unit independently, which
+// is why its 2,771 kg and the 2,772 kg derived from 6,111 lb differ by 1.)
+//
+// NOTE ON THE CHECKBOX: 'eqTanks' used to read "forward external fuel tanks
+// / luggage cases", because both carry the same -3% TAS penalty. Adding this
+// capacity cap made that ambiguous -- luggage cases add no fuel, so a crew
+// flying them would have seen a ceiling 1,045 lb too high. Greg confirmed the
+// company operates EFTs only and no luggage cases, so the label now names the
+// EFT alone. If luggage cases ever appear, this tick must be split in two:
+// both keep the -3%, only the EFT raises the cap.
+// ===================================================================
+const FUEL_CAP_INTERNAL_LB = 5066;   // RFM 4.10, total with 6th tank
+const FUEL_CAP_EFT_LB      = 1045;   // RFM 7.9, forward external tanks, pair
+
+function fuelCapLb(){
+  const eft = document.getElementById('eqTanks');
+  return FUEL_CAP_INTERNAL_LB + ((eft && eft.checked) ? FUEL_CAP_EFT_LB : 0);
+}
+
+function clampFuel(){
+  const lbEl = document.getElementById('fuel-lb');
+  const kgEl = document.getElementById('fuel-kg');
+  const noteEl = document.getElementById('fuel-cap-note');
+  if (!lbEl || !kgEl) return false;
+
+  const capLb = fuelCapLb();
+  const capKg = Math.round(capLb / KG_TO_LB);
+  const eft = document.getElementById('eqTanks');
+  const withEft = !!(eft && eft.checked);
+
+  let lb = parseFloat(lbEl.value);
+  let clamped = false;
+  if (!isNaN(lb) && lb > capLb){
+    lbEl.value = capLb;
+    kgEl.value = capKg;
+    clamped = true;
+  }
+
+  if (noteEl){
+    noteEl.innerHTML = clamped
+      ? 'Limited to tank capacity: <strong>' + capLb.toLocaleString() + ' lb / '
+        + capKg.toLocaleString() + ' kg</strong>'
+        + (withEft ? ' (internal 5,066 lb + forward external tanks 1,045 lb).'
+                   : ' (internal, no external tanks).')
+        + ' RFM Section 4.10, rev 22-48.'
+      : 'Max tank capacity <strong>' + capLb.toLocaleString() + ' lb / '
+        + capKg.toLocaleString() + ' kg</strong>'
+        + (withEft ? ' \u2014 internal 5,066 lb plus forward external tanks 1,045 lb.'
+                   : ' \u2014 internal only; tick the external tanks above if fitted.')
+      ;
+    noteEl.classList.toggle('capped', clamped);
+  }
+  return clamped;
+}
+
+// Set the note on first load. ec225InitSticky() below calls clampFuel()
+// again after any restore, so a restored over-capacity value is caught too.
+clampFuel();
 
 // ===================================================================
 // Remember the last inputs (per app)
@@ -2254,6 +2330,7 @@ function ec225InitSticky(){
     } else {
       ec225ApplyInputs(d.v);
       ec225RestoreExtra(d.x);
+      clampFuel();   // restored inputs are re-checked against capacity
       ec225StickyNote(mins);
       ec225Recompute();
     }
