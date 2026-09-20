@@ -1,7 +1,7 @@
 // EC225 Route Fuel Planner (ForeFlight import) - Service Worker
 // Caches the app for full offline use after first load
 
-const CACHE_NAME = 'ec225-mission-fuel-fpl-v9';
+const CACHE_NAME = 'ec225-mission-fuel-fpl-v10';
 const FILES_TO_CACHE = [
   './',
   './index.html'

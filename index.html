@@ -211,6 +211,46 @@
   .burn-footnote { font-size: 10.5px; color: #7d8590; margin-top: 8px; line-height: 1.5; }
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+  /* ---- Flight file (save / load) ---- */
+  .ff-row { display: flex; gap: 8px; }
+  .ff-btn {
+    flex: 1; padding: 12px 10px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    background: rgba(129,140,248,0.10); border: 1px solid rgba(129,140,248,0.40);
+    color: #818cf8; -webkit-tap-highlight-color: transparent;
+  }
+  .ff-btn:active { background: rgba(129,140,248,0.25); }
+  .ff-err {
+    display: none; margin-top: 10px; padding: 11px 13px; border-radius: 6px;
+    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.35);
+    color: #f87171; font-size: 12px; line-height: 1.55;
+  }
+  .ff-err.show { display: block; }
+  .ff-summary {
+    display: none; margin-top: 10px; padding: 11px 13px; border-radius: 6px;
+    background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.30);
+    font-size: 12px; line-height: 1.6; color: #c9d1d9;
+  }
+  .ff-summary.show { display: block; }
+  .ff-summary .ff-warn { color: #fbbf24; }
+  .ff-summary .ff-note { color: #9ca3af; }
+  .ff-copy {
+    display: none; width: 100%; margin-top: 10px; min-height: 120px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    background: #0d1117; color: #e6edf3; border: 1px solid #374151;
+    border-radius: 6px; padding: 8px;
+  }
+  .ff-copy.show { display: block; }
+
+  /* ---- restored-inputs note ---- */
+  .sticky-note {
+    display: none; margin: 0 0 14px 0; padding: 9px 12px; border-radius: 6px;
+    background: rgba(125,133,144,0.10); border-left: 3px solid #818cf8;
+    font-size: 11px; line-height: 1.5; color: #9ca3af;
+  }
+  .sticky-note.show { display: block; }
+  .sticky-note a { color: #818cf8; text-decoration: none; font-weight: 600; }
+
   .info {
     margin-top: 4px; margin-bottom: 16px;
     padding: 12px 14px;
@@ -251,6 +291,8 @@
     <h1>EC225 Route Fuel Planner</h1>
     <div class="subtitle">MAKILA 2A1 &middot; MPAI Bullets Closed &middot; ForeFlight Import &middot; <span style="color:#fbbf24;">BETA</span></div>
   </header>
+
+  <div class="sticky-note" id="sticky-note"></div>
 
   <div class="section">
     <div class="section-title">Flight Plan Import</div>
@@ -497,8 +539,26 @@
     </div>
   </div>
 
+  <div class="section">
+    <div class="section-title">Flight File</div>
+    <div class="section-sub">Save everything entered above to a file on this device, and load it back later. The saved file carries the imported route too, so the map and waypoint nav log come back with it.</div>
+    <!-- No `accept` filter, on purpose -- same reason as the ForeFlight import:
+         iOS resolves `accept` through Uniform Type Identifiers and greys out
+         anything it cannot type-match, so a filter risks making a perfectly
+         good file unselectable on iPad. The loader validates the file's
+         contents instead, which is the check that actually matters. -->
+    <input type="file" id="ff-file" style="display:none" onchange="ec225HandleFlightFile(this)">
+    <div class="ff-row">
+      <button class="ff-btn" onclick="ec225SaveFlight()">Save Flight</button>
+      <button class="ff-btn" onclick="document.getElementById('ff-file').click()">Load Flight</button>
+    </div>
+    <div class="ff-err" id="ff-err"></div>
+    <div class="ff-summary" id="ff-summary"></div>
+    <textarea class="ff-copy" id="ff-copy" readonly></textarea>
+  </div>
+
   <div class="info">
-    <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-07-27, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. CAT A/B Max Allowable GWT must still be read from the CAT A/B charts (ec225-ca-cat-a / ec225-cb-to-lnd) &mdash; this tool checks your takeoff weight against it but does not compute it. Simulation stops immediately if any 15-minute point falls outside the charted envelope, rather than guessing.
+    <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-09-19, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. CAT A/B Max Allowable GWT must still be read from the CAT A/B charts (ec225-ca-cat-a / ec225-cb-to-lnd) &mdash; this tool checks your takeoff weight against it but does not compute it. Simulation stops immediately if any 15-minute point falls outside the charted envelope, rather than guessing.
   </div>
 
   <div class="footer">
@@ -1328,6 +1388,11 @@ function parseFpl(text){
 // exactly how it behaved before the import existed.
 let FPL_LEGS = null;
 
+// The most recently applied route, kept so the flight file can carry it.
+// FPL_LEGS alone is not enough -- it holds leg distances but not the waypoint
+// coordinates the stick map needs.
+let FPL_PLAN = null;
+
 function applyFplPlan(plan){
   const applied = [];
 
@@ -1539,6 +1604,7 @@ function handleFplFile(input){
       return;
     }
 
+    FPL_PLAN = plan;
     const applied = applyFplPlan(plan);
     const routeStr = plan.points.map(function(p){ return p.id; }).join(' &rarr; ');
     sumEl.innerHTML =
@@ -1583,11 +1649,13 @@ function stepRoc(delta){
 }
 
 function setCategory(c){
+  setTimeout(function(){ try { ec225SaveInputs(); } catch (e) {} }, 0);
   category = c;
   document.getElementById('catA-btn').classList.toggle('active', c==='A');
   document.getElementById('catB-btn').classList.toggle('active', c==='B');
 }
 function setRules(r){
+  setTimeout(function(){ try { ec225SaveInputs(); } catch (e) {} }, 0);
   rules = r;
   document.getElementById('ifr-btn').classList.toggle('active', r==='IFR');
   document.getElementById('vfr-btn').classList.toggle('active', r==='VFR');
@@ -1797,6 +1865,8 @@ function applyHandoff(){
   if (p.lb != null) document.getElementById('maxgwt-lb').value = Math.round(p.lb);
   else syncWeightFromKg('maxgwt');
   if (p.category === 'A' || p.category === 'B') setCategory(p.category);
+  try { ec225SaveInputs(); } catch (e) {}   // remember the accepted weight
+
   const el = document.getElementById('handoff-strip');
   el.classList.add('applied');
   el.innerHTML =
@@ -1829,6 +1899,381 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function() {});
   });
 }
+
+// ===================================================================
+// Flight file -- save / load the whole planning state
+// -------------------------------------------------------------------
+// Greg's ask: "similar to the file that comes from ForeFlight, if I fill in
+// all the information for a flight could we have a save-as that could be
+// loaded later." So this is a plain JSON file the pilot owns, saved to the
+// device, not browser storage -- it survives cache clears, moves between
+// iPad and Mac, and can be kept with the rest of the flight paperwork.
+//
+// Deliberate choices:
+//   * Loading NEVER runs the plan. It fills the fields, reports what it
+//     filled, and waits for the Calculate button -- same as the ForeFlight
+//     import. A file could be days old; a fuel figure computed from a stale
+//     OAT and wind with nothing prompting a second look is the failure worth
+//     designing out. The summary states the file's age for that reason.
+//   * Field ids are whitelisted. An id in a file is never trusted into the
+//     DOM, and a field added to the app later cannot make older files fail.
+//   * lb and kg are both saved and both applied verbatim. Deriving one from
+//     the other reintroduces the rounding mismatch found in the Cat A handoff,
+//     where a round-trip through kg landed 3 lb off what the other screen
+//     showed.
+//   * .json, not a custom extension. A made-up extension has no Uniform Type
+//     Identifier, which is exactly what greyed .fpl files out in the iOS
+//     picker; public.json is registered, so these files stay selectable.
+// ===================================================================
+const EC225_FLIGHT_FORMAT  = 'ec225-flight';
+const EC225_FLIGHT_VERSION = 1;
+const EC225_APP_ID         = 'ec225-mission-fuel-fpl';
+const EC225_SUPPORTS_ROUTE = true;
+
+const EC225_FLIGHT_FIELDS = ['maxgwt-lb','maxgwt-kg','dep-id','dep-elev','dep-oat',
+  'roc','hp','oat','dist','wind','zfw-lb','zfw-kg','fuel-lb','fuel-kg'];
+const EC225_FLIGHT_CHECKS = ['eqHoist','eqTanks','fcop-margin'];
+
+function ec225FlightObject(){
+  const fields = {}, checks = {};
+  EC225_FLIGHT_FIELDS.forEach(function(id){
+    const e = document.getElementById(id); if (e) fields[id] = e.value;
+  });
+  EC225_FLIGHT_CHECKS.forEach(function(id){
+    const e = document.getElementById(id); if (e) checks[id] = !!e.checked;
+  });
+  const out = {
+    format: EC225_FLIGHT_FORMAT,
+    version: EC225_FLIGHT_VERSION,
+    savedBy: EC225_APP_ID,
+    savedAt: new Date().toISOString(),
+    fields: fields,
+    checks: checks,
+    toggles: { category: (typeof category !== 'undefined' ? category : null),
+               rules:    (typeof rules    !== 'undefined' ? rules    : null) }
+  };
+  if (EC225_SUPPORTS_ROUTE && typeof FPL_PLAN !== 'undefined' && FPL_PLAN){
+    // Carry the parsed route so loading restores the stick map and the
+    // per-waypoint burn-down, not just the numbers -- one file is then the
+    // whole flight and the .fpl is not needed again.
+    out.route = {
+      name: FPL_PLAN.name || null,
+      tail: FPL_PLAN.tail || null,
+      distanceNm: FPL_PLAN.distanceNm,
+      cruiseAltFt: FPL_PLAN.cruiseAltFt,
+      points: FPL_PLAN.points.map(function(p){
+        return { id: p.id, lat: p.lat, lon: p.lon };
+      })
+    };
+  }
+  return out;
+}
+
+function ec225FlightJson(){ return JSON.stringify(ec225FlightObject(), null, 2); }
+
+function ec225FlightFilename(){
+  const depEl = document.getElementById('dep-id');
+  let dep = (depEl && depEl.value ? depEl.value : '').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (!dep) dep = 'FLIGHT';
+  const d = new Date(), p = function(n){ return String(n).padStart(2,'0'); };
+  return 'EC225-flight-' + dep + '-' + d.getFullYear() + '-' + p(d.getMonth()+1) + '-'
+         + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.json';
+}
+
+function ec225FlightMsg(el, html, cls){
+  const e = document.getElementById(el);
+  if (!e) return;
+  e.innerHTML = html;
+  e.classList.add('show');
+  const other = (el === 'ff-err') ? 'ff-summary' : 'ff-err';
+  const o = document.getElementById(other);
+  if (o) { o.classList.remove('show'); o.innerHTML = ''; }
+}
+
+function ec225SaveFlight(){
+  const json = ec225FlightJson();
+  const name = ec225FlightFilename();
+  const copyEl = document.getElementById('ff-copy');
+  if (copyEl) copyEl.classList.remove('show');
+  try {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = name;
+    if (document.body && document.body.appendChild) document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){
+      try { URL.revokeObjectURL(url); } catch (e) {}
+      try { if (a.remove) a.remove(); } catch (e) {}
+    }, 0);
+    ec225FlightMsg('ff-summary',
+      'Saved <strong>' + name + '</strong>.'
+      + '<div class="ff-note">On iPhone/iPad it goes wherever Safari puts downloads &mdash; usually Files &rarr; Downloads. '
+      + 'Load it back here, or in the other fuel planner, with <strong>Load Flight</strong>.</div>');
+  } catch (e){
+    // Some standalone/home-screen contexts block programmatic downloads.
+    // Rather than fail silently, hand over the text to copy by hand.
+    if (copyEl){ copyEl.value = json; copyEl.classList.add('show'); }
+    ec225FlightMsg('ff-err',
+      'This device would not let the app save a file directly (' + (e.message || 'download blocked') + ').'
+      + '<br>The flight is in the box below &mdash; copy it into a note or a text file and paste it back into '
+      + '<strong>Load Flight</strong> later.');
+  }
+}
+
+function ec225HandleFlightFile(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = function(){ ec225FlightMsg('ff-err', 'Could not read that file.'); };
+  reader.onload  = function(){ ec225LoadFlightText(String(reader.result)); };
+  reader.readAsText(file);
+}
+
+function ec225LoadFlightText(text){
+  let d;
+  try { d = JSON.parse(text); }
+  catch (e){
+    return ec225FlightMsg('ff-err',
+      'That file is not an EC225 flight file &mdash; it is not readable JSON.'
+      + '<br>Pick a file saved with <strong>Save Flight</strong>, or a ForeFlight <code>.fpl</code> route with <strong>Load ForeFlight Plan</strong>.');
+  }
+  if (!d || typeof d !== 'object' || d.format !== EC225_FLIGHT_FORMAT){
+    return ec225FlightMsg('ff-err',
+      'That is readable JSON but not an EC225 flight file (no <code>ec225-flight</code> marker).<br>To load a ForeFlight route, use <strong>Load ForeFlight Plan (.fpl)</strong> instead.');
+  }
+  if (typeof d.version !== 'number' || d.version > EC225_FLIGHT_VERSION){
+    return ec225FlightMsg('ff-err',
+      'That flight file was written by a newer version of this tool (file v' + d.version
+      + ', this app reads up to v' + EC225_FLIGHT_VERSION + ').'
+      + '<br>Tap <strong>&#8635; Refresh App</strong> in the footer to update, then try again.');
+  }
+  if (!d.fields || typeof d.fields !== 'object'){
+    return ec225FlightMsg('ff-err', 'That flight file is missing its saved values &mdash; nothing to load.');
+  }
+  ec225ApplyFlight(d);
+}
+
+function ec225ApplyFlight(d){
+  let n = 0;
+  EC225_FLIGHT_FIELDS.forEach(function(id){
+    if (!(id in d.fields)) return;
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.value = d.fields[id];
+    n++;
+  });
+  EC225_FLIGHT_CHECKS.forEach(function(id){
+    if (!d.checks || !(id in d.checks)) return;
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.checked = !!d.checks[id];
+    n++;
+  });
+  if (d.toggles){
+    if ((d.toggles.category === 'A' || d.toggles.category === 'B') && typeof setCategory === 'function')
+      setCategory(d.toggles.category);
+    if ((d.toggles.rules === 'IFR' || d.toggles.rules === 'VFR') && typeof setRules === 'function')
+      setRules(d.toggles.rules);
+  }
+  if (typeof updateTotalWeight === 'function') updateTotalWeight();
+
+  // ---- route
+  let routeNote = '';
+  // A route is only usable if every point carries finite coordinates. Without
+  // this check a file whose points lost their lat/lon still reported "route
+  // restored", then fed NaN leg distances into the nav log -- garbage that
+  // looks like a real plan. Caught in testing 2026-09-20.
+  const routeUsable = !!(d.route && Array.isArray(d.route.points) && d.route.points.length >= 2
+    && d.route.points.every(function(p){
+         return p && isFinite(parseFloat(p.lat)) && isFinite(parseFloat(p.lon));
+       }));
+  const hasRoute = !!(d.route && d.route.points && d.route.points.length >= 2);
+  if (hasRoute && !routeUsable && EC225_SUPPORTS_ROUTE){
+    if (typeof FPL_PLAN !== 'undefined') FPL_PLAN = null;
+    if (typeof FPL_LEGS !== 'undefined') FPL_LEGS = null;
+    routeNote = '<div class="ff-warn">The file lists ' + d.route.points.length
+      + ' waypoints but some are missing coordinates, so the route was not rebuilt. '
+      + 'The numbers loaded; the nav log will step every 15 minutes. '
+      + 'Re-import the ForeFlight <code>.fpl</code> to get the waypoint rows back.</div>';
+  }
+  if (routeUsable && EC225_SUPPORTS_ROUTE){
+    try {
+      FPL_PLAN = d.route;
+      applyFplPlan(d.route);
+      renderFplMap(d.route);
+      routeNote = '<div>Route restored: <strong>' + d.route.points.length
+        + ' waypoints</strong> &mdash; the map and per-waypoint burn-down are back.</div>';
+    } catch (e){
+      FPL_PLAN = null; FPL_LEGS = null;
+      routeNote = '<div class="ff-warn">The file held a route but it could not be rebuilt ('
+        + (e.message || 'bad route data') + '). The numbers loaded; the nav log will fall back to '
+        + '15-minute steps.</div>';
+    }
+  } else if (routeUsable && !EC225_SUPPORTS_ROUTE){
+    // Say this plainly. Silently dropping the route would give a nav log of
+    // 15-minute rows where the pilot expects one row per waypoint.
+    routeNote = '<div class="ff-warn">This file also holds a ' + d.route.points.length
+      + '-waypoint route, which this planner cannot use. The distance and altitude loaded, '
+      + 'but the burn-down will step every 15 minutes instead of per waypoint. '
+      + 'Open the same file in the <strong>Route Fuel Planner</strong> for the waypoint nav log.</div>';
+  }
+
+  // ---- age
+  let ageNote = '';
+  const t = Date.parse(d.savedAt || '');
+  if (!isNaN(t)){
+    const mins = (Date.now() - t) / 60000;
+    let age;
+    if (mins < 1) age = 'just now';
+    else if (mins < 60) age = Math.round(mins) + ' min ago';
+    else if (mins < 48*60) age = Math.round(mins/60) + ' hours ago';
+    else age = Math.round(mins/1440) + ' days ago';
+    const stale = mins > 6*60;
+    ageNote = '<div class="' + (stale ? 'ff-warn' : 'ff-note') + '">Saved ' + age
+      + (d.savedBy && d.savedBy !== EC225_APP_ID ? ' in the other fuel planner' : '')
+      + (stale ? ' &mdash; check OAT, wind and weights against today before you rely on it.' : '.')
+      + '</div>';
+  }
+
+  try { ec225SaveInputs(); } catch (e) {}   // remember what the file just set
+
+  ec225FlightMsg('ff-summary',
+    '<div><strong>Flight loaded</strong> &mdash; ' + n + ' values restored.</div>'
+    + routeNote + ageNote
+    + '<div class="ff-note">Nothing has been calculated yet. Look the inputs over, then press the '
+    + 'Calculate button.</div>');
+}
+
+// ===================================================================
+// Remember the last inputs (per app)
+// -------------------------------------------------------------------
+// Greg's complaint: leave a tool and everything you typed is gone, so
+// moving between apps in one planning session means retyping PA and OAT
+// over and over.
+//
+// The safety problem with simply restoring them is obvious: a pilot opens
+// the app tomorrow, sees a number computed from yesterday's conditions, and
+// has no reason to doubt it. Three things prevent that:
+//   1. Restores expire. Anything older than 6 hours is discarded, not shown.
+//   2. The restore is never silent -- a note says the inputs came from a
+//      previous session and how long ago, with a one-tap Reset to defaults.
+//   3. Nothing is restored across devices or accounts; this is local only.
+// Storage is wrapped in try/catch throughout: localStorage throws in some
+// private-browsing contexts, and that must never break a calculator.
+// ===================================================================
+const EC225_INPUTS_KEY = 'ec225.inputs.mission-fuel-fpl';
+const EC225_INPUTS_MAX_AGE_MIN = 360;
+const EC225_INPUTS_SKIP = ['ff-file','fpl-file'];
+let EC225_INPUT_DEFAULTS = null;
+let EC225_EXTRA_DEFAULTS = null;
+
+function ec225InputEls(){
+  let list = [];
+  try { list = Array.prototype.slice.call(document.querySelectorAll('input, select')); }
+  catch (e) { return []; }
+  return list.filter(function(e){
+    return e && e.id && e.type !== 'file' && EC225_INPUTS_SKIP.indexOf(e.id) === -1;
+  });
+}
+
+function ec225SnapshotInputs(){
+  const v = {};
+  ec225InputEls().forEach(function(e){
+    v[e.id] = (e.type === 'checkbox' || e.type === 'radio') ? !!e.checked : e.value;
+  });
+  return v;
+}
+
+function ec225ApplyInputs(v){
+  if (!v) return 0;
+  let n = 0;
+  ec225InputEls().forEach(function(e){
+    if (!(e.id in v)) return;
+    if (e.type === 'checkbox' || e.type === 'radio') e.checked = !!v[e.id];
+    else e.value = v[e.id];
+    n++;
+  });
+  return n;
+}
+
+function ec225SaveInputs(){
+  try {
+    localStorage.setItem(EC225_INPUTS_KEY, JSON.stringify({
+      savedAt: Date.now(), v: ec225SnapshotInputs(), x: ec225ExtraState()
+    }));
+  } catch (e) {}
+}
+
+function ec225ClearInputs(){
+  try { localStorage.removeItem(EC225_INPUTS_KEY); } catch (e) {}
+}
+
+function ec225StickyAge(min){
+  if (min < 1) return 'a moment ago';
+  if (min < 60) return Math.round(min) + ' min ago';
+  const h = min / 60;
+  if (h < 2) return 'about an hour ago';
+  return Math.round(h) + ' hours ago';
+}
+
+function ec225StickyNote(min){
+  const el = document.getElementById('sticky-note');
+  if (!el) return;
+  el.innerHTML = 'Showing the inputs you last used here, from ' + ec225StickyAge(min)
+    + '. <a href="javascript:void(0)" onclick="ec225ResetInputs()">Reset to defaults</a>';
+  el.classList.add('show');
+}
+
+function ec225ResetInputs(){
+  ec225ApplyInputs(EC225_INPUT_DEFAULTS);
+  ec225RestoreExtra(EC225_EXTRA_DEFAULTS);
+  ec225ClearInputs();
+  const el = document.getElementById('sticky-note');
+  if (el){ el.classList.remove('show'); el.innerHTML = ''; }
+  ec225Recompute();
+}
+
+function ec225InitSticky(){
+  // Capture the markup's own defaults FIRST, so Reset has something true to
+  // go back to even after a restore has overwritten the fields.
+  EC225_INPUT_DEFAULTS = ec225SnapshotInputs();
+  EC225_EXTRA_DEFAULTS = ec225ExtraState();
+
+  let d = null;
+  try {
+    const raw = localStorage.getItem(EC225_INPUTS_KEY);
+    if (raw) d = JSON.parse(raw);
+  } catch (e) { d = null; }
+
+  if (d && d.v && d.savedAt){
+    const mins = (Date.now() - d.savedAt) / 60000;
+    if (mins > EC225_INPUTS_MAX_AGE_MIN){
+      ec225ClearInputs();            // too old to be this session's planning
+    } else {
+      ec225ApplyInputs(d.v);
+      ec225RestoreExtra(d.x);
+      ec225StickyNote(mins);
+      ec225Recompute();
+    }
+  }
+
+  ec225InputEls().forEach(function(e){
+    if (!e.addEventListener) return;
+    e.addEventListener('input', ec225SaveInputs);
+    e.addEventListener('change', ec225SaveInputs);
+  });
+}
+
+function ec225ExtraState(){ return { category: category, rules: rules }; }
+function ec225RestoreExtra(x){
+  if (!x) return;
+  if (x.category === 'A' || x.category === 'B') setCategory(x.category);
+  if (x.rules === 'IFR' || x.rules === 'VFR') setRules(x.rules);
+}
+function ec225Recompute(){ /* button-driven app: never auto-run a plan on restore */ }
+ec225InitSticky();
 
 async function forceRefresh() {
   try {
