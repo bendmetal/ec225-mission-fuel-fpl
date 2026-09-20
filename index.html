@@ -377,7 +377,7 @@
     <div class="subsection-divider"></div>
 
     <div class="section-title" style="margin-top:14px;">Optional Equipment</div>
-    <div class="section-sub">Applies -3% each to TAS at each 15-minute step (only where TAS &ge; V<sub>y</sub>), per RFM Section 10.0. Torque and fuel flow are unaffected (no correction given for those in the book).</div>
+    <div class="section-sub">Applies -3% each to TAS at every step of the burn-down (only where TAS &ge; V<sub>y</sub>), per RFM Section 10.0. Torque and fuel flow are unaffected (no correction given for those in the book).</div>
     <div class="equip-row"><input type="checkbox" id="eqHoist" checked><label for="eqHoist">Single/dual hoist installed</label></div>
     <div class="equip-row"><input type="checkbox" id="eqTanks" checked onchange="clampFuel(); updateTotalWeight();"><label for="eqTanks">Forward external fuel tanks (EFT) installed</label></div>
 
@@ -391,7 +391,7 @@
 
   <div class="section">
     <div class="section-title">Departure Airfield</div>
-    <div class="section-sub">Used to size a single climb segment from field elevation up to cruise altitude &mdash; a simplified average-climb estimate, not a modeled climb profile. Inserted as the first row of the burn-down below, ahead of the 15-minute cruise steps.</div>
+    <div class="section-sub">Used to size a single climb segment from field elevation up to cruise altitude &mdash; a simplified average-climb estimate, not a modeled climb profile. Inserted as the first row of the burn-down below, ahead of the cruise steps.</div>
     <div class="field" style="max-width:180px;">
       <label>Identifier</label>
       <input type="text" id="dep-id" maxlength="4" placeholder="e.g. KABC" value="">
@@ -427,7 +427,7 @@
 
   <div class="section">
     <div class="section-title">Cruise Conditions</div>
-    <div class="section-sub">Same Section 10.2.A1 data as the Cruise Torque &amp; Fuel Burn tool &mdash; used here to re-look-up TAS and fuel flow every 15 minutes as weight burns down.</div>
+    <div class="section-sub">Same Section 10.2.A1 data as the Cruise Torque &amp; Fuel Burn tool &mdash; used here to re-look-up TAS and fuel flow at every step as weight burns down: waypoint to waypoint with a route loaded, every 15 minutes without one.</div>
     <div class="field-row">
       <div class="field">
         <label>Pressure Altitude (ft)</label>
@@ -614,7 +614,10 @@
   </div>
 
   <div class="info">
-    <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-09-19, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. CAT A/B Max Allowable GWT must still be read from the CAT A/B charts (ec225-ca-cat-a / ec225-cb-to-lnd) &mdash; this tool checks your takeoff weight against it but does not compute it. Simulation stops immediately if any 15-minute point falls outside the charted envelope, rather than guessing.
+    <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-09-19, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. Fuel on Board is capped at tank capacity per RFM Section 4.10.
+    <br><br>
+    <strong>CAT A/B Max Allowable GWT is not computed here.</strong> Read it in <strong>Cat A Max T/O &amp; Landing</strong>, <strong>Cat A Takeoff &mdash; Helipad</strong> or <strong>Cat B Max T/O &amp; Landing</strong>, then tap <em>Use this weight in the Fuel Planner</em> there and accept the offer at the top of the GWT field here &mdash; the conditions it was read at travel with it. Entering it by hand does the same job. This tool checks your takeoff weight against that figure; it does not work it out.
+    <br><br>Simulation stops immediately if any step falls outside the charted envelope, rather than guessing &mdash; steps run waypoint to waypoint with a route loaded, and every 15 minutes without one. The fuel reserve is sized on the burn rate of the leg it is reached on, so it reflects the rate showing near the destination.
   </div>
 
   <div class="footer">
