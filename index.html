@@ -276,6 +276,45 @@
   .ruload-note { margin-top: 6px; font-size: 11px; line-height: 1.5; color: #7d8590; }
   .ruload-note.over { color: #f87171; }
 
+  /* ---- shared Section 10.2.A1 chart viewer ---- */
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; font-size: 11px; color: #9ca3af; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .chart-swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .chart-row { margin-bottom: 12px; }
+  .chart-row:last-child { margin-bottom: 0; }
+  .chart-row-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .chart-row-links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chart-link {
+    display: inline-block; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid #374151; background: #161b22; color: #e6edf3;
+    font-size: 13px; text-decoration: none; -webkit-tap-highlight-color: transparent;
+  }
+  .chart-link:active { background: #1f2937; }
+  .chart-link.used-cruise {
+    border-color: #818cf8; background: rgba(129,140,248,0.18); color: #c7d2fe; font-weight: 600;
+  }
+  .chart-link.used-climb {
+    border-color: #fb923c; background: rgba(251,146,60,0.18); color: #fed7aa; font-weight: 600;
+  }
+  /* A figure that feeds BOTH carries both colours rather than inventing a
+     third meaning: indigo fill for cruise, orange border for climb. */
+  .chart-link.used-both {
+    border-color: #fb923c; background: rgba(129,140,248,0.18); color: #c7d2fe; font-weight: 600;
+  }
+  .lightbox {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+    z-index: 1000; padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .lightbox.open { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+  .lightbox-close {
+    position: sticky; top: 0; align-self: flex-end;
+    width: 40px; height: 40px; border-radius: 20px; border: 1px solid #374151;
+    background: #161b22; color: #e6edf3; font-size: 18px; margin-bottom: 10px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lightbox-title { color: #9ca3af; font-size: 12px; text-align: center; margin-bottom: 10px; letter-spacing: 0.4px; }
+  .lightbox img { max-width: 100%; border-radius: 8px; margin-bottom: 14px; }
+
   .info {
     margin-top: 4px; margin-bottom: 16px;
     padding: 12px 14px;
@@ -613,6 +652,17 @@
     <textarea class="ff-copy" id="ff-copy" readonly></textarea>
   </div>
 
+  <div class="section">
+    <div class="section-title">Source charts &middot; Section 10.2.A1</div>
+    <div class="section-sub">The 27 published Hp/OAT figures behind every number in this tool &mdash; the same charts used by Cruise Torque &amp; Fuel Burn. Tap a temperature to read Fig n/1 and Fig n/2 full-size. Highlighted figures were used by your last run.</div>
+    <div class="chart-legend">
+      <span><i class="chart-swatch" style="background:rgba(129,140,248,0.18);border:1px solid #818cf8;"></i> used for cruise</span>
+      <span><i class="chart-swatch" style="background:rgba(251,146,60,0.18);border:1px solid #fb923c;"></i> used for the climb segment</span>
+      <span><i class="chart-swatch" style="background:rgba(129,140,248,0.18);border:1px solid #fb923c;"></i> both</span>
+    </div>
+    <div id="chart-grid"></div>
+  </div>
+
   <div class="info">
     <strong>Source:</strong> RFM Section 10.2.A1, Figures 1-27 (MAKILA 2A1), rev 10-07, data revised 2026-09-19, same lookup engine as the Cruise Torque &amp; Fuel Burn tool. Fuel on Board is capped at tank capacity per RFM Section 4.10.
     <br><br>
@@ -625,6 +675,13 @@
     Verify against source charts for operational use<br>
     <a href="javascript:void(0)" class="refresh-link" onclick="forceRefresh()">&#8635; Refresh App</a>
   </div>
+</div>
+
+<div class="lightbox" id="chartLightbox">
+  <button class="lightbox-close" onclick="closeChart()">&times;</button>
+  <div class="lightbox-title" id="chartLightboxTitle"></div>
+  <img id="chartLightboxImg1" alt="Fig n/1">
+  <img id="chartLightboxImg2" alt="Fig n/2">
 </div>
 
 <script>
@@ -1390,7 +1447,7 @@ function runMission(params){
 
   if (stopReason === null) stopReason = 'maxsteps';
 
-  return { rows, stopReason, overMax, reserveKg };
+  return { rows, stopReason, overMax, reserveKg, climbInfo };
 }
 
 
@@ -1816,6 +1873,19 @@ function runPlanner(){
   });
 
   const { rows, stopReason, reserveKg } = result;
+
+  // Colour the source-chart grid: indigo for the figures the cruise
+  // interpolated between, orange for the climb segment's (looked up at the
+  // midpoint of field elevation and cruise altitude, so often a different
+  // band entirely), and both where a figure fed each.
+  try {
+    const cruiseFigs = ec225FiguresFor(hp, oat);
+    let climbFigs = [];
+    if (result.climbInfo && !result.climbInfo.skip && result.climbInfo.midHp != null){
+      climbFigs = ec225FiguresFor(result.climbInfo.midHp, result.climbInfo.midOat);
+    }
+    ec225HighlightCharts(cruiseFigs, climbFigs);
+  } catch (e) { /* the grid is a reference aid; never let it break a plan */ }
   const lastRow = rows[rows.length-1];
 
   // Title tells you which mode produced this table, so a printed or
@@ -2479,6 +2549,107 @@ function ec225RestoreExtra(x){
 }
 function ec225Recompute(){ /* button-driven app: never auto-run a plan on restore */ }
 ec225InitSticky();
+
+const EC225_CHART_FIGS = FIGURES;
+
+// ===================================================================
+// Section 10.2.A1 source charts
+// -------------------------------------------------------------------
+// The same 54 images (27 figures x 2 panels) used by Cruise Torque & Fuel
+// Burn, Max Endurance and both fuel planners. They are served once from
+// /charts/ rather than base64-inlined into each app: four inline copies
+// would put the offline download at ~53 MB instead of ~27 MB, for
+// byte-identical pictures.
+// ===================================================================
+const EC225_CHART_BASE = '../charts/';
+function ec225ChartUrl(figNum, panel){
+  return EC225_CHART_BASE + 'fig' + String(figNum).padStart(2,'0') + '-' + panel + '.jpg';
+}
+
+function openChart(figNum){
+  const f = EC225_CHART_FIGS[figNum];
+  if (!f) return;
+  document.getElementById('chartLightboxTitle').textContent =
+    'Figure ' + String(figNum).padStart(2,'0') + 'b \u00b7 Hp ' + f.hp.toLocaleString()
+    + ' ft, OAT ' + f.oat + '\u00b0C';
+  document.getElementById('chartLightboxImg1').src = ec225ChartUrl(figNum, 'p1');
+  document.getElementById('chartLightboxImg2').src = ec225ChartUrl(figNum, 'p2');
+  document.getElementById('chartLightbox').classList.add('open');
+}
+function closeChart(){
+  document.getElementById('chartLightbox').classList.remove('open');
+}
+
+// Which published figures bracket a given Hp/OAT -- up to four, being the two
+// altitudes either side crossed with the two temperatures either side.
+function ec225FiguresFor(hp, oat){
+  const used = [];
+  const levels = Object.keys(EC225_CHART_FIGS).map(function(n){ return EC225_CHART_FIGS[n].hp; });
+  const hpSet = Array.from(new Set(levels)).sort(function(a,b){ return a-b; });
+  const hb = bracket(hp, hpSet);
+  if (!hb) return used;
+  Array.from(new Set([hb.lo, hb.hi])).forEach(function(hpVal){
+    const oats = Array.from(new Set(Object.keys(EC225_CHART_FIGS)
+      .filter(function(n){ return EC225_CHART_FIGS[n].hp === hpVal; })
+      .map(function(n){ return EC225_CHART_FIGS[n].oat; }))).sort(function(a,b){ return a-b; });
+    const ob = bracket(oat, oats);
+    if (!ob) return;
+    Array.from(new Set([ob.lo, ob.hi])).forEach(function(oatVal){
+      for (const n in EC225_CHART_FIGS){
+        const f = EC225_CHART_FIGS[n];
+        if (f.hp === hpVal && f.oat === oatVal){ if (used.indexOf(n) === -1) used.push(n); break; }
+      }
+    });
+  });
+  return used;
+}
+
+function ec225BuildChartGrid(){
+  const el = document.getElementById('chart-grid');
+  if (!el) return;
+  const byHp = {};
+  Object.keys(EC225_CHART_FIGS).sort(function(a,b){ return Number(a)-Number(b); }).forEach(function(n){
+    const f = EC225_CHART_FIGS[n];
+    (byHp[f.hp] = byHp[f.hp] || []).push({ n: n, oat: f.oat });
+  });
+  let html = '';
+  Object.keys(byHp).map(Number).sort(function(a,b){ return a-b; }).forEach(function(hpVal){
+    html += '<div class="chart-row"><div class="chart-row-label">Hp ' + hpVal.toLocaleString()
+         + ' ft</div><div class="chart-row-links">';
+    byHp[hpVal].sort(function(a,b){ return a.oat-b.oat; }).forEach(function(it){
+      html += '<a href="javascript:void(0)" class="chart-link" id="chart-link-' + it.n
+           + '" onclick="openChart(\'' + it.n + '\')">' + (it.oat > 0 ? '+' : '') + it.oat
+           + '&deg;</a>';
+    });
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+// Highlight which figures fed which part of the plan. Cruise and the climb
+// segment can land on different figures -- the climb is looked up at the
+// MIDPOINT of field elevation and cruise altitude, so on a long climb it
+// often reads a lower band entirely. Greg asked for them coloured
+// separately so it is obvious which chart backs which part of the answer.
+function ec225HighlightCharts(cruiseFigs, climbFigs){
+  // Clear by the figure keys this app actually built, rather than by class
+  // query: it targets exactly our own links, cannot be thrown off by anything
+  // else sharing the class, and is directly testable.
+  for (const k in EC225_CHART_FIGS){
+    const e = document.getElementById('chart-link-' + k);
+    if (e) e.classList.remove('used-cruise','used-climb','used-both');
+  }
+  const cr = cruiseFigs || [], cl = climbFigs || [];
+  const marks = {};
+  cr.forEach(function(n){ marks[n] = 'cruise'; });
+  cl.forEach(function(n){ marks[n] = (marks[n] === 'cruise') ? 'both' : 'climb'; });
+  for (const n in marks){
+    const el = document.getElementById('chart-link-' + n);
+    if (el) el.classList.add('used-' + marks[n]);
+  }
+}
+
+ec225BuildChartGrid();
 
 async function forceRefresh() {
   try {
