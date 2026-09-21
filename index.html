@@ -1184,6 +1184,15 @@ function runMission(params){
   let stopReason = null;
   const MAX_STEPS = 4 * 24; // safety cap: 24 hours of endurance, way beyond any realistic mission
   let reserveKg = null;
+  // Set on the arrival path when the aircraft reaches the destination but does
+  // so with less than the reserve requirement. Arrival used to be checked
+  // BEFORE the reserve test and then break out of the loop, so a step that
+  // reached the field never tested its fuel against reserve at all -- and the
+  // banner said "Route complete with reserve intact" unconditionally. Greg
+  // caught it landing with 317 lb against a 383 lb requirement, reported as
+  // intact. Reaching the field and having legal reserve are two different
+  // questions; the tool now answers both. (Found 2026-09-21.)
+  let arrivedBelowReserve = false;
 
   // --- Climb segment ----------------------------------------------------
   // Inserted as its own row ahead of the 15-minute cruise steps, using the
@@ -1409,6 +1418,9 @@ function runMission(params){
         note: 'Destination', flagKind
       });
       stopReason = 'arrived';
+      // reserveKg is this step's burn rate x the reserve time, so this is the
+      // requirement as it stands on the leg into the destination.
+      arrivedBelowReserve = (fuelKg < reserveKg - 1e-9);
       break;
     }
 
@@ -1447,7 +1459,7 @@ function runMission(params){
 
   if (stopReason === null) stopReason = 'maxsteps';
 
-  return { rows, stopReason, overMax, reserveKg, climbInfo };
+  return { rows, stopReason, overMax, reserveKg, climbInfo, arrivedBelowReserve };
 }
 
 
@@ -1933,8 +1945,16 @@ function runPlanner(){
         + ' Add fuel, reduce weight, or shorten the route.</div>';
     })();
   } else if (stopReason === 'arrived'){
-    banner.innerHTML = '<div class="banner ok">Route complete with reserve intact. Landing with ' + fmtWeight(lastRow.fuelKg)
-      + ' remaining (' + reserveMinutes + ' min reserve requirement: ' + fmtWeight(reserveKg) + ').</div>';
+    banner.innerHTML = (result.arrivedBelowReserve
+      ? '<div class="banner err">Route complete, but you arrive <strong>below reserve</strong>.<br>'
+        + 'Landing with ' + fmtWeight(lastRow.fuelKg) + ' against a ' + reserveMinutes
+        + ' min reserve of ' + fmtWeight(reserveKg) + ' &mdash; <strong>'
+        + (Math.round(reserveKg * KG_TO_LB) - Math.round(lastRow.fuelKg * KG_TO_LB)).toLocaleString()
+        + ' lb short</strong>, at the '
+        + Math.round(lastRow.fuelFlowKgH * KG_TO_LB).toLocaleString()
+        + ' lb/h burn rate on the final leg. Add fuel, reduce weight, or shorten the route.</div>'
+      : '<div class="banner ok">Route complete with reserve intact. Landing with ' + fmtWeight(lastRow.fuelKg)
+        + ' remaining (' + reserveMinutes + ' min reserve requirement: ' + fmtWeight(reserveKg) + ').</div>');
   } else {
     banner.innerHTML = '<div class="banner warn">Simulation reached its internal step limit (24 hours) without arriving or hitting reserve &mdash; check your inputs.</div>';
   }
